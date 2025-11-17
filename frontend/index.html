@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="chat-container">
+
+        <div class="chat-header">
+            Instant Chat
+        </div>
+
+        <!-- Saisie pseudo -->
+        <div class="pseudo-box">
+            <input id="pseudo" placeholder="Entrez votre pseudo...">
+        </div>
+
+        <!-- Messages -->
+        <div id="messages"></div>
+
+        <!-- Zone input -->
+        <div class="chat-input">
+            <input id="msg" placeholder="Écrire un message...">
+            <button onclick="sendMessage()">Envoyer</button>
+        </div>
+
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        if (!window.hasInitializedChat) {
+            window.hasInitializedChat = true;
+
+            const socket = io("http://localhost:3000");
+
+            socket.on("connect", () => {
+                console.log("Connecté :", socket.id);
+            });
+
+            socket.on("receive_message", (data) => {
+                displayMessage(data);
+            });
+
+            function displayMessage(data) {
+                const userPseudo = document.getElementById("pseudo").value;
+
+                const div = document.createElement("div");
+                div.classList.add("msg");
+
+                if (data.pseudo === userPseudo.trim()) {
+                    div.classList.add("me");
+                }
+
+                const pseudoDiv = document.createElement("div");
+                pseudoDiv.classList.add("pseudo");
+                pseudoDiv.textContent = data.pseudo;
+
+                const messageDiv = document.createElement("div");
+                messageDiv.textContent = data.message;
+
+                div.appendChild(pseudoDiv);
+                div.appendChild(messageDiv);
+
+                document.getElementById("messages").appendChild(div);
+                document.getElementById("messages").scrollTop =
+                    document.getElementById("messages").scrollHeight;
+            }
+
+            function sendMessage() {
+                const pseudo = document.getElementById("pseudo").value.trim();
+                const message = document.getElementById("msg").value.trim();
+
+                if (!pseudo) {
+                    alert("Veuillez entrer un pseudo");
+                    return;
+                }
+                if (!message) return;
+
+                socket.emit("send_message", { pseudo, message });
+                document.getElementById("msg").value = "";
+            }
+        }
+    </script>
+
+</body>
+</html>
