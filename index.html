@@ -1,90 +1,153 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8">
-    <title>Chat App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instant Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-    <div class="chat-container">
+    <div id="app">
+        <!-- LOGIN VIEW -->
+        <div id="login-view" class="view active">
+            <div class="login-card">
+                <h1>Bienvenue</h1>
+                <p class="subtitle">Connectez-vous pour discuter</p>
 
-        <div class="chat-header">
-            Instant Chat
+                <div class="input-group">
+                    <label>Pseudo</label>
+                    <input type="text" id="login-username" placeholder="Votre pseudo">
+                </div>
+
+                <div class="input-group">
+                    <label>Mot de passe</label>
+                    <input type="password" id="login-password" placeholder="Votre mot de passe">
+                </div>
+
+                <button id="btn-login" class="primary-btn">Se connecter</button>
+                <button id="btn-register" class="secondary-btn">Créer un compte</button>
+            </div>
         </div>
 
-        <!-- Saisie pseudo -->
-        <div class="pseudo-box">
-            <input id="pseudo" placeholder="Entrez votre pseudo...">
+        <!-- CHAT VIEW -->
+        <div id="chat-view" class="view hidden">
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Channels</h2>
+                    <button id="btn-create-channel" class="icon-btn" title="Créer un channel">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+                <div id="channels-list" class="channels-list">
+                    <!-- Channels will be injected here -->
+                </div>
+
+                <div class="sidebar-header">
+                    <h2>Messages Privés</h2>
+                    <button id="btn-new-dm" class="icon-btn" title="Nouveau message">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+                <div id="users-list" class="channels-list">
+                    <!-- Recent DMs will be injected here -->
+                </div>
+                <div class="user-profile">
+                    <div class="avatar" id="user-avatar"></div>
+                    <span id="current-username">User</span>
+                    <button id="btn-logout" class="icon-btn" title="Déconnexion">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                            <polyline points="16 17 21 12 16 7"></polyline>
+                            <line x1="21" y1="12" x2="9" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="main-chat">
+                <div class="chat-header">
+                    <button id="menu-toggle" class="icon-btn menu-toggle">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="3" y1="12" x2="21" y2="12"></line>
+                            <line x1="3" y1="6" x2="21" y2="6"></line>
+                            <line x1="3" y1="18" x2="21" y2="18"></line>
+                        </svg>
+                    </button>
+                    <div class="chat-header-info">
+                        <h3 id="chat-channel-name"># Général</h3>
+                        <span id="chat-channel-desc" class="channel-desc">Discussion générale</span>
+                    </div>
+                    <div id="chat-header-actions">
+                        <button id="btn-header-channel-settings" class="icon-btn hidden" title="Options du salon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <circle cx="12" cy="12" r="1"></circle>
+                                <circle cx="19" cy="12" r="1"></circle>
+                                <circle cx="5" cy="12" r="1"></circle>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="messages" class="messages-area">
+                    <!-- Messages will be injected here -->
+                </div>
+
+                <div id="reply-indicator" class="reply-indicator hidden">
+                    <div class="reply-content">
+                        <span class="reply-to">Répondre à <strong id="reply-to-username">User</strong></span>
+                        <span id="reply-to-text" class="reply-text">Message...</span>
+                    </div>
+                    <button id="btn-cancel-reply" class="icon-btn small">✕</button>
+                </div>
+
+                <div class="chat-input-area">
+                    <div id="autocomplete-list" class="autocomplete-items hidden"></div>
+                    <button id="btn-emoji" class="icon-btn" title="Emojis">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                            <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                            <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                        </svg>
+                    </button>
+                    <input type="text" id="msg-input" placeholder="Envoyer un message...">
+                    <button id="btn-send" class="send-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+            </div>
         </div>
-
-        <!-- Messages -->
-        <div id="messages"></div>
-
-        <!-- Zone input -->
-        <div class="chat-input">
-            <input id="msg" placeholder="Écrire un message...">
-            <button onclick="sendMessage()">Envoyer</button>
-        </div>
-
     </div>
 
+    <div id="emoji-picker-container" class="hidden">
+        <emoji-picker></emoji-picker>
+    </div>
+
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script>
-        if (!window.hasInitializedChat) {
-            window.hasInitializedChat = true;
-
-            const socket = io("http://localhost:3000");
-
-            socket.on("connect", () => {
-                console.log("Connecté :", socket.id);
-            });
-
-            socket.on("receive_message", (data) => {
-                displayMessage(data);
-            });
-
-            function displayMessage(data) {
-                const userPseudo = document.getElementById("pseudo").value;
-
-                const div = document.createElement("div");
-                div.classList.add("msg");
-
-                if (data.pseudo === userPseudo.trim()) {
-                    div.classList.add("me");
-                }
-
-                const pseudoDiv = document.createElement("div");
-                pseudoDiv.classList.add("pseudo");
-                pseudoDiv.textContent = data.pseudo;
-
-                const messageDiv = document.createElement("div");
-                messageDiv.textContent = data.message;
-
-                div.appendChild(pseudoDiv);
-                div.appendChild(messageDiv);
-
-                document.getElementById("messages").appendChild(div);
-                document.getElementById("messages").scrollTop =
-                    document.getElementById("messages").scrollHeight;
-            }
-
-            function sendMessage() {
-                const pseudo = document.getElementById("pseudo").value.trim();
-                const message = document.getElementById("msg").value.trim();
-
-                if (!pseudo) {
-                    alert("Veuillez entrer un pseudo");
-                    return;
-                }
-                if (!message) return;
-
-                socket.emit("send_message", { pseudo, message });
-                document.getElementById("msg").value = "";
-            }
-        }
-    </script>
-
+    <script src="script.js"></script>
 </body>
+
 </html>
