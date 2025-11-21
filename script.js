@@ -9,31 +9,150 @@ let users = [];
 
 // DOM Elements
 const loginView = document.getElementById("login-view");
+const registerView = document.getElementById("register-view");
 const chatView = document.getElementById("chat-view");
 
 const loginUsernameInput = document.getElementById("login-username");
 const loginPasswordInput = document.getElementById("login-password");
 const btnLogin = document.getElementById("btn-login");
+const btnGoToRegister = document.getElementById("btn-go-to-register");
+
+const registerUsernameInput = document.getElementById("register-username");
+const registerPasswordInput = document.getElementById("register-password");
+const registerPasswordConfirmInput = document.getElementById("register-password-confirm");
 const btnRegister = document.getElementById("btn-register");
+const btnGoToLogin = document.getElementById("btn-go-to-login");
 
 const channelsList = document.getElementById("channels-list");
 const usersList = document.getElementById("users-list");
+const channelMembersList = document.getElementById("channel-members-list");
+const channelMembersHeader = document.getElementById("channel-members-header");
+const channelMembersCount = document.getElementById("channel-members-count");
 const userAvatar = document.getElementById("user-avatar");
+const userAvatarContainer = document.getElementById("user-profile-avatar-container");
+const userStatusIndicator = document.getElementById("user-status-indicator");
 const currentUsernameDisplay = document.getElementById("current-username");
 const btnLogout = document.getElementById("btn-logout");
+const btnUserProfile = document.getElementById("btn-user-profile");
+
+// Profile Modal Elements
+const profileModal = document.getElementById("profile-modal");
+const closeProfileModal = document.getElementById("close-profile-modal");
+const profileUsername = document.getElementById("profile-username");
+const profileBio = document.getElementById("profile-bio");
+const profileStatus = document.getElementById("profile-status");
+const profileAvatarDisplay = document.getElementById("profile-avatar-display");
+const profileStatusDisplay = document.getElementById("profile-status-display");
+const saveProfileBtn = document.getElementById("save-profile");
+const cancelProfileEdit = document.getElementById("cancel-profile-edit");
+const editAvatarBtn = document.getElementById("edit-avatar-btn");
+const editAvatarPickerBtn = document.getElementById("edit-avatar-picker-btn");
+const profileEmojiPickerWrapper = document.getElementById("profile-emoji-picker-wrapper");
+const avatarPreview = document.getElementById("avatar-preview");
+const colorOptions = document.querySelectorAll(".color-option");
+
+// Profile state
+let selectedEmoji = null;
+let selectedAvatarColor = "#5865F2";
+
+// Profile Card Elements
+const userProfileCard = document.getElementById("user-profile-card");
+const profileCardAvatar = document.getElementById("profile-card-avatar");
+const profileCardUsername = document.getElementById("profile-card-username");
+const profileCardBio = document.getElementById("profile-card-bio");
+const profileCardStatus = document.getElementById("profile-card-status");
+const profileCardCreated = document.getElementById("profile-card-created");
+
+// Debug: Verify elements exist at initialization
+console.log("═══════════════════════════════════════");
+console.log("🔍 INITIALIZATION: Profile Card Elements");
+console.log("═══════════════════════════════════════");
+console.log("userProfileCard:", userProfileCard);
+console.log("profileCardUsername:", profileCardUsername);
+console.log("profileCardAvatar:", profileCardAvatar);
+console.log("profileCardBio:", profileCardBio);
+console.log("profileCardStatus:", profileCardStatus);
+console.log("profileCardCreated:", profileCardCreated);
+
+if (!userProfileCard) {
+    console.error("❌ CRITICAL: user-profile-card element NOT FOUND in DOM!");
+    console.error("Please check that the element exists in index.html");
+} else {
+    console.log("✅ user-profile-card found");
+    console.log("  - ID:", userProfileCard.id);
+    console.log("  - Classes:", userProfileCard.className);
+    console.log("  - Has 'hidden' class:", userProfileCard.classList.contains("hidden"));
+    const styles = window.getComputedStyle(userProfileCard);
+    console.log("  - Computed display:", styles.display);
+    console.log("  - Computed visibility:", styles.visibility);
+    console.log("  - Computed z-index:", styles.zIndex);
+}
+
+if (!profileCardUsername) console.error("❌ profile-card-username element not found");
+if (!profileCardAvatar) console.error("❌ profile-card-avatar element not found");
+console.log("═══════════════════════════════════════");
 
 const chatChannelName = document.getElementById("chat-channel-name");
 const chatChannelDesc = document.getElementById("chat-channel-desc");
 const messagesContainer = document.getElementById("messages");
 const msgInput = document.getElementById("msg-input");
 const btnSend = document.getElementById("btn-send");
+const btnAttach = document.getElementById("btn-attach");
+const fileInput = document.getElementById("file-input");
+const filePreviewArea = document.getElementById("file-preview-area");
+const filePreviewList = document.getElementById("file-preview-list");
+const btnClearFiles = document.getElementById("btn-clear-files");
+
+// File upload state
+let selectedFiles = [];
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 // --- AUTHENTICATION ---
 
-btnLogin.addEventListener("click", async () => {
+// Navigation between views
+btnGoToRegister.addEventListener("click", () => {
+    showRegisterView();
+});
+
+btnGoToLogin.addEventListener("click", () => {
+    showLoginView();
+});
+
+function showLoginView() {
+    loginView.classList.remove("hidden");
+    loginView.classList.add("active");
+    registerView.classList.remove("active");
+    registerView.classList.add("hidden");
+    // Clear register form
+    registerUsernameInput.value = "";
+    registerPasswordInput.value = "";
+    registerPasswordConfirmInput.value = "";
+}
+
+function showRegisterView() {
+    registerView.classList.remove("hidden");
+    registerView.classList.add("active");
+    loginView.classList.remove("active");
+    loginView.classList.add("hidden");
+    // Clear login form
+    loginUsernameInput.value = "";
+    loginPasswordInput.value = "";
+}
+
+// Login handler
+btnLogin.addEventListener("click", handleLogin);
+
+loginPasswordInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") handleLogin();
+});
+
+async function handleLogin() {
     const username = loginUsernameInput.value.trim();
     const password = loginPasswordInput.value.trim();
-    if (!username || !password) return alert("Veuillez remplir tous les champs");
+    if (!username || !password) {
+        alert("Veuillez remplir tous les champs");
+        return;
+    }
 
     try {
         const res = await fetch("http://localhost:3000/api/login", {
@@ -45,18 +164,43 @@ btnLogin.addEventListener("click", async () => {
         if (res.ok) {
             login(data);
         } else {
-            alert(data.error);
+            alert(data.error || "Erreur de connexion");
         }
     } catch (e) {
         console.error(e);
         alert("Erreur de connexion");
     }
+}
+
+// Register handler
+btnRegister.addEventListener("click", handleRegister);
+
+registerPasswordConfirmInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") handleRegister();
 });
 
-btnRegister.addEventListener("click", async () => {
-    const username = loginUsernameInput.value.trim();
-    const password = loginPasswordInput.value.trim();
-    if (!username || !password) return alert("Veuillez remplir tous les champs");
+async function handleRegister() {
+    const username = registerUsernameInput.value.trim();
+    const password = registerPasswordInput.value.trim();
+    const passwordConfirm = registerPasswordConfirmInput.value.trim();
+
+    // Validation
+    if (!username || !password || !passwordConfirm) {
+        alert("Veuillez remplir tous les champs");
+        return;
+    }
+
+    if (password !== passwordConfirm) {
+        alert("Les mots de passe ne correspondent pas");
+        registerPasswordConfirmInput.focus();
+        return;
+    }
+
+    if (password.length < 4) {
+        alert("Le mot de passe doit contenir au moins 4 caractères");
+        registerPasswordInput.focus();
+        return;
+    }
 
     try {
         const res = await fetch("http://localhost:3000/api/register", {
@@ -68,13 +212,13 @@ btnRegister.addEventListener("click", async () => {
         if (res.ok) {
             login(data);
         } else {
-            alert(data.error);
+            alert(data.error || "Erreur lors de l'inscription");
         }
     } catch (e) {
         console.error(e);
         alert("Erreur de connexion");
     }
-});
+}
 
 const autocompleteList = document.getElementById("autocomplete-list");
 
@@ -325,6 +469,11 @@ socket.on("receive_message", (msg) => {
 
     if (currentChannel && msg.channel_id === currentChannel.id) {
         shouldDisplay = true;
+        
+        // If message is from a new member, reload members list
+        if (msg.sender_id && !channelMembers.find(m => m.id === msg.sender_id)) {
+            loadChannelMembers(currentChannel.id);
+        }
     } else if (currentRecipient && (msg.recipient_id === currentUser.id || msg.recipient_id === currentRecipient.id) && (msg.username === currentRecipient.username || msg.username === currentUser.username)) {
         shouldDisplay = true;
     }
@@ -375,7 +524,8 @@ function cancelReply() {
 
 function displayMessage(data) {
     const div = document.createElement("div");
-    div.className = `msg ${data.username === currentUser.username ? 'me' : ''}`;
+    // All messages aligned to the right
+    div.className = "msg";
     div.id = `msg-${data.id}`;
 
     // Reply Context
@@ -394,24 +544,230 @@ function displayMessage(data) {
         div.appendChild(replyDiv);
     }
 
+    // Message header with avatar and username
+    const msgHeader = document.createElement("div");
+    msgHeader.className = "msg-header";
+    
+    // Find user info from users array or create default
+    let userInfo = users.find(u => u.username === data.username);
+    
+    // If it's the current user, use currentUser data
+    if (data.username === currentUser.username) {
+        userInfo = currentUser;
+    }
+    
+    // Get sender_id from message data
+    const senderId = data.sender_id || (userInfo ? userInfo.id : null) || (data.username === currentUser.username ? currentUser.id : null);
+    
+    console.log("📨 Message data for displayMessage:", {
+        messageId: data.id,
+        username: data.username,
+        sender_id: data.sender_id,
+        userInfoId: userInfo ? userInfo.id : null,
+        computedSenderId: senderId,
+        currentUserId: currentUser.id
+    });
+    
+    // If user not in cache but we have sender_id, load it
+    if (!userInfo && senderId) {
+        fetch(`http://localhost:3000/api/users/${senderId}`)
+            .then(res => res.json())
+            .then(user => {
+                if (!users.find(u => u.id === user.id)) {
+                    users.push(user);
+                }
+                // Update avatar in message
+                const msgElement = document.getElementById(`msg-${data.id}`);
+                if (msgElement) {
+                    const avatar = msgElement.querySelector(".msg-avatar");
+                    if (avatar) {
+                        updateAvatarElement(avatar, user.avatar, user.username, user.avatar_color);
+                    }
+                }
+            })
+            .catch(() => {});
+        userInfo = { username: data.username, id: senderId };
+    } else if (!userInfo) {
+        userInfo = { username: data.username, id: senderId };
+    }
+    
+    const msgAvatar = document.createElement("div");
+    msgAvatar.className = "msg-avatar";
+    updateAvatarElement(msgAvatar, userInfo.avatar, data.username, userInfo.avatar_color);
+    
     const pseudo = document.createElement("div");
     pseudo.className = "pseudo";
     pseudo.textContent = data.username;
+    
+    // Make username clickable if we have an ID (including current user)
+    const userId = userInfo.id || senderId || (data.username === currentUser.username ? currentUser.id : null);
+    
+    console.log("🔍 Checking if pseudo should be clickable:", {
+        userId,
+        username: data.username,
+        currentUsername: currentUser.username,
+        userInfo: userInfo,
+        senderId: senderId,
+        hasUserInfoId: !!userInfo.id,
+        hasSenderId: !!senderId,
+        isCurrentUser: data.username === currentUser.username
+    });
+    
+    if (userId) {
+        console.log("✅ Making pseudo clickable for:", { userId, username: data.username });
+        pseudo.style.cursor = "pointer";
+        pseudo.title = "Voir le profil";
+        pseudo.setAttribute("data-user-id", String(userId));
+        pseudo.setAttribute("data-username", data.username);
+        pseudo.classList.add("clickable-username");
+        
+        // Create a dedicated click handler that directly calls showUserProfileCard
+        const clickHandler = (e) => {
+            console.log("🖱️ CLICK EVENT DETECTED!");
+            console.log("Event details:", {
+                type: e.type,
+                target: e.target,
+                currentTarget: e.currentTarget,
+                bubbles: e.bubbles,
+                cancelable: e.cancelable
+            });
+            
+            e.stopPropagation();
+            e.preventDefault();
+            
+            // Get values directly from the element
+            const targetUserId = e.currentTarget.getAttribute("data-user-id");
+            const targetUsername = e.currentTarget.getAttribute("data-username");
+            
+            console.log("📋 Extracted values from element:", { 
+                targetUserId, 
+                targetUsername,
+                hasUserProfileCard: !!userProfileCard,
+                userProfileCardClasses: userProfileCard ? userProfileCard.className : "N/A"
+            });
+            
+            if (!targetUserId) {
+                console.error("❌ ERROR: targetUserId is missing!");
+                return false;
+            }
+            
+            if (!userProfileCard) {
+                console.error("❌ ERROR: userProfileCard element is null!");
+                alert("Erreur: La carte de profil n'a pas été trouvée dans le DOM");
+                return false;
+            }
+            
+            // Get position of clicked element for card positioning
+            const rect = e.currentTarget.getBoundingClientRect();
+            console.log("📍 Click position:", { x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+            
+            console.log("🚀 Calling showUserProfileCard with:", { targetUserId, targetUsername });
+            showUserProfileCard(targetUserId, targetUsername, rect);
+            
+            return false;
+        };
+        
+        // Use capture phase to catch the event early
+        pseudo.addEventListener("click", clickHandler, true);
+        console.log("✅ Event listener added to pseudo element");
+    } else {
+        const reason = !userId ? "No userId" : (data.username === currentUser.username ? "Same as current user" : "Unknown reason");
+        console.log("❌ Pseudo NOT made clickable:", {
+            reason: reason,
+            userId: userId,
+            dataUsername: data.username,
+            currentUsername: currentUser.username,
+            userInfoId: userInfo.id,
+            senderId: senderId,
+            userInfo: userInfo
+        });
+        
+        // If it's not the current user but has no userId, try to load it
+        if (!userId && data.username !== currentUser.username && data.sender_id) {
+            console.log("⚠️ No userId found, but sender_id exists. Attempting to load user profile...");
+            // We'll load it asynchronously, but for now just log
+            console.log("sender_id from data:", data.sender_id);
+        }
+    }
+    
+    msgHeader.appendChild(msgAvatar);
+    msgHeader.appendChild(pseudo);
 
     const content = document.createElement("div");
     content.className = "msg-content";
 
-    // Handle mentions
-    let text = data.message;
-    const mentionRegex = /@(\w+)/g;
-    text = text.replace(mentionRegex, (match, username) => {
-        if (username === currentUser.username) {
-            return `<span class="mention highlight">${match}</span>`;
+    // Handle file attachments
+    if (data.file_path) {
+        const fileContainer = document.createElement("div");
+        fileContainer.className = "msg-file-container";
+        
+        const fileIcon = getFileIcon(data.file_type || "");
+        const fileName = data.file_name || "Fichier";
+        const fileSize = data.file_size ? formatFileSize(data.file_size) : "";
+        const fileUrl = `http://localhost:3000${data.file_path}`;
+        
+        const fileElement = document.createElement("div");
+        fileElement.className = "msg-file";
+        
+        // Determine file type and create appropriate display
+        if (data.file_type && data.file_type.startsWith("image/")) {
+            // Image preview
+            const img = document.createElement("img");
+            img.src = fileUrl;
+            img.className = "msg-file-image";
+            img.alt = fileName;
+            img.onclick = () => window.open(fileUrl, "_blank");
+            fileElement.appendChild(img);
+        } else if (data.file_type && data.file_type.startsWith("audio/")) {
+            // Audio player
+            const audio = document.createElement("audio");
+            audio.src = fileUrl;
+            audio.controls = true;
+            audio.className = "msg-file-audio";
+            fileElement.appendChild(audio);
+        } else if (data.file_type && data.file_type.startsWith("video/")) {
+            // Video player
+            const video = document.createElement("video");
+            video.src = fileUrl;
+            video.controls = true;
+            video.className = "msg-file-video";
+            fileElement.appendChild(video);
+        } else {
+            // Document or other file - show as link
+            const fileLink = document.createElement("a");
+            fileLink.href = fileUrl;
+            fileLink.target = "_blank";
+            fileLink.className = "msg-file-link";
+            fileLink.innerHTML = `
+                <span class="file-icon">${fileIcon}</span>
+                <div class="file-info">
+                    <span class="file-name">${fileName}</span>
+                    ${fileSize ? `<span class="file-size">${fileSize}</span>` : ""}
+                </div>
+            `;
+            fileElement.appendChild(fileLink);
         }
-        return `<span class="mention">${match}</span>`;
-    });
+        
+        fileContainer.appendChild(fileElement);
+        content.appendChild(fileContainer);
+    }
 
-    content.innerHTML = text;
+    // Handle text message with mentions
+    if (data.message) {
+        let text = data.message;
+        const mentionRegex = /@(\w+)/g;
+        text = text.replace(mentionRegex, (match, username) => {
+            if (username === currentUser.username) {
+                return `<span class="mention highlight">${match}</span>`;
+            }
+            return `<span class="mention">${match}</span>`;
+        });
+
+        const textDiv = document.createElement("div");
+        textDiv.className = "msg-text";
+        textDiv.innerHTML = text;
+        content.appendChild(textDiv);
+    }
 
     // Reactions Container
     const reactionsDiv = document.createElement("div");
@@ -465,7 +821,7 @@ function displayMessage(data) {
 
     reactionsDiv.appendChild(actionsDiv);
 
-    div.appendChild(pseudo);
+    div.appendChild(msgHeader);
     div.appendChild(content);
     div.appendChild(reactionsDiv);
 
@@ -476,33 +832,262 @@ function scrollToBottom() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-function sendMessage() {
+async function sendMessage() {
     const message = msgInput.value.trim();
-    if (!message || !currentUser) return;
+    if (!currentUser) return;
+    
+    // If no message and no files, don't send
+    if (!message && selectedFiles.length === 0) return;
 
-    const payload = {
-        username: currentUser.username,
-        message: message,
-        reply_to_id: activeReply ? activeReply.id : null
-    };
+    // Upload files first if any
+    let uploadedFiles = [];
+    if (selectedFiles.length > 0) {
+        try {
+            uploadedFiles = await uploadFiles(selectedFiles);
+        } catch (e) {
+            console.error("Erreur upload fichiers", e);
+            alert("Erreur lors de l'upload des fichiers: " + e.message);
+            return;
+        }
+    }
 
-    if (currentChannel) {
-        payload.channel_id = currentChannel.id;
-        socket.emit("send_message", payload);
-    } else if (currentRecipient) {
-        payload.recipient_id = currentRecipient.id;
-        payload.sender_id = currentUser.id;
-        socket.emit("send_message", payload);
+    // Send message(s) - one per file or one with message
+    if (uploadedFiles.length > 0) {
+        for (const file of uploadedFiles) {
+            const payload = {
+                username: currentUser.username,
+                message: message || file.originalName,
+                reply_to_id: activeReply ? activeReply.id : null,
+                file_path: file.path,
+                file_name: file.originalName,
+                file_type: file.mimetype,
+                file_size: file.size
+            };
+
+            if (currentChannel) {
+                payload.channel_id = currentChannel.id;
+                payload.sender_id = currentUser.id;
+            } else if (currentRecipient) {
+                payload.recipient_id = currentRecipient.id;
+                payload.sender_id = currentUser.id;
+            }
+
+            socket.emit("send_message", payload);
+        }
+    } else {
+        // Regular text message
+        const payload = {
+            username: currentUser.username,
+            message: message,
+            reply_to_id: activeReply ? activeReply.id : null
+        };
+
+        if (currentChannel) {
+            payload.channel_id = currentChannel.id;
+            payload.sender_id = currentUser.id;
+            socket.emit("send_message", payload);
+        } else if (currentRecipient) {
+            payload.recipient_id = currentRecipient.id;
+            payload.sender_id = currentUser.id;
+            socket.emit("send_message", payload);
+        }
     }
 
     msgInput.value = "";
+    clearSelectedFiles();
     cancelReply();
     closeAutocomplete();
 }
 
+async function uploadFiles(files) {
+    const uploadPromises = [];
+    
+    for (const file of files) {
+        if (file.size > MAX_FILE_SIZE) {
+            throw new Error(`Le fichier "${file.name}" dépasse la taille maximale de 50MB`);
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const promise = fetch("http://localhost:3000/api/upload", {
+            method: "POST",
+            body: formData
+        })
+        .then(res => {
+            if (!res.ok) {
+                return res.json().then(err => {
+                    throw new Error(err.error || "Erreur upload");
+                });
+            }
+            return res.json();
+        })
+        .then(data => ({
+            ...data,
+            originalName: file.name,
+            file: file
+        }));
+
+        uploadPromises.push(promise);
+    }
+
+    return Promise.all(uploadPromises);
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + " " + sizes[i];
+}
+
+function getFileIcon(mimeType) {
+    if (mimeType.startsWith("audio/")) return "🎵";
+    if (mimeType.startsWith("video/")) return "🎬";
+    if (mimeType.startsWith("image/")) return "🖼️";
+    if (mimeType === "application/pdf") return "📄";
+    if (mimeType.includes("word") || mimeType.includes("document")) return "📝";
+    if (mimeType.includes("excel") || mimeType.includes("spreadsheet")) return "📊";
+    if (mimeType.includes("powerpoint") || mimeType.includes("presentation")) return "📽️";
+    if (mimeType === "text/plain" || mimeType === "text/csv") return "📃";
+    return "📎";
+}
+
+// File upload handlers
+console.log("🔧 Initializing file upload handlers...", {
+    btnAttach: !!btnAttach,
+    fileInput: !!fileInput,
+    filePreviewArea: !!filePreviewArea,
+    filePreviewList: !!filePreviewList,
+    btnClearFiles: !!btnClearFiles
+});
+
+if (btnAttach) {
+    btnAttach.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("📎 Attach button clicked");
+        if (fileInput) {
+            console.log("📂 Opening file picker...");
+            fileInput.click();
+        } else {
+            console.error("❌ fileInput not found!");
+        }
+    });
+} else {
+    console.error("❌ btnAttach not found in DOM!");
+}
+
+if (fileInput) {
+    fileInput.addEventListener("change", (e) => {
+        console.log("📁 File input changed", e.target.files);
+        const files = Array.from(e.target.files);
+        if (files.length > 0) {
+            console.log(`✅ ${files.length} file(s) selected`);
+            handleFileSelection(files);
+        } else {
+            console.log("⚠️ No files selected");
+        }
+        // Reset input to allow selecting the same file again
+        e.target.value = "";
+    });
+} else {
+    console.error("❌ fileInput not found in DOM!");
+}
+
+if (btnClearFiles) {
+    btnClearFiles.addEventListener("click", () => {
+        console.log("🗑️ Clearing selected files");
+        clearSelectedFiles();
+    });
+} else {
+    console.warn("⚠️ btnClearFiles not found in DOM");
+}
+
+function handleFileSelection(files) {
+    const validFiles = [];
+    const errors = [];
+
+    files.forEach(file => {
+        if (file.size > MAX_FILE_SIZE) {
+            errors.push(`"${file.name}" dépasse 50MB`);
+        } else {
+            validFiles.push(file);
+        }
+    });
+
+    if (errors.length > 0) {
+        alert("Erreurs:\n" + errors.join("\n"));
+    }
+
+    if (validFiles.length > 0) {
+        selectedFiles = [...selectedFiles, ...validFiles];
+        renderFilePreviews();
+    }
+}
+
+function renderFilePreviews() {
+    console.log("🎨 Rendering file previews...", {
+        selectedFilesCount: selectedFiles.length,
+        filePreviewList: !!filePreviewList,
+        filePreviewArea: !!filePreviewArea
+    });
+
+    if (!filePreviewList || !filePreviewArea) {
+        console.error("❌ filePreviewList or filePreviewArea not found!");
+        return;
+    }
+
+    filePreviewList.innerHTML = "";
+
+    if (selectedFiles.length === 0) {
+        console.log("📭 No files to preview, hiding area");
+        filePreviewArea.classList.add("hidden");
+        return;
+    }
+
+    console.log("✅ Showing file preview area with", selectedFiles.length, "file(s)");
+    filePreviewArea.classList.remove("hidden");
+
+    selectedFiles.forEach((file, index) => {
+        const preview = document.createElement("div");
+        preview.className = "file-preview-item";
+        
+        const icon = getFileIcon(file.type);
+        const size = formatFileSize(file.size);
+
+        preview.innerHTML = `
+            <div class="file-preview-icon">${icon}</div>
+            <div class="file-preview-info">
+                <div class="file-preview-name">${file.name}</div>
+                <div class="file-preview-size">${size}</div>
+            </div>
+            <button class="file-preview-remove" data-index="${index}">✕</button>
+        `;
+
+        const removeBtn = preview.querySelector(".file-preview-remove");
+        removeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            selectedFiles.splice(index, 1);
+            renderFilePreviews();
+        });
+
+        filePreviewList.appendChild(preview);
+    });
+}
+
+function clearSelectedFiles() {
+    selectedFiles = [];
+    renderFilePreviews();
+}
+
 btnSend.addEventListener("click", sendMessage);
 msgInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") sendMessage();
+    if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
 });
 
 function login(user) {
@@ -513,22 +1098,499 @@ function login(user) {
 
     loginView.classList.remove("active");
     loginView.classList.add("hidden");
+    registerView.classList.remove("active");
+    registerView.classList.add("hidden");
     chatView.classList.remove("hidden");
     chatView.classList.add("active");
 
     currentUsernameDisplay.textContent = user.username;
-    userAvatar.textContent = user.username.charAt(0).toUpperCase();
+    updateUserAvatar(user);
+    updateUserStatus(user);
 
     socket.emit("user_login", user.id);
     requestNotificationPermission();
 
     loadChannels();
     loadConversations();
+    loadUserProfile().then(() => {
+        // Add current user to users array for message display
+        if (currentUser && !users.find(u => u.id === currentUser.id)) {
+            users.push(currentUser);
+        }
+    });
+}
+
+// Helper function to update avatar element (emoji or image URL)
+function updateAvatarElement(element, avatar, username, avatarColor = null) {
+    if (!element) return;
+    
+    if (avatar) {
+        // Check if it's a URL (starts with http:// or https://)
+        if (avatar.startsWith("http://") || avatar.startsWith("https://") || avatar.startsWith("data:")) {
+            element.style.backgroundImage = `url(${avatar})`;
+            element.style.backgroundSize = "cover";
+            element.style.backgroundPosition = "center";
+            element.textContent = "";
+            if (avatarColor) {
+                element.style.backgroundColor = avatarColor;
+            }
+        } else {
+            // It's an emoji or text
+            element.textContent = avatar;
+            element.style.backgroundImage = "";
+            element.style.backgroundSize = "";
+            element.style.backgroundPosition = "";
+            if (avatarColor) {
+                element.style.backgroundColor = avatarColor;
+            }
+        }
+    } else {
+        element.textContent = username ? username.charAt(0).toUpperCase() : "?";
+        element.style.backgroundImage = "";
+        element.style.backgroundSize = "";
+        element.style.backgroundPosition = "";
+        if (avatarColor) {
+            element.style.backgroundColor = avatarColor;
+        }
+    }
+}
+
+function updateUserAvatar(user) {
+    updateAvatarElement(userAvatar, user.avatar, user.username, user.avatar_color);
+}
+
+function updateUserStatus(user) {
+    if (userStatusIndicator && user.status) {
+        userStatusIndicator.className = `status-indicator ${user.status}`;
+    }
+}
+
+async function loadUserProfile() {
+    if (!currentUser || !currentUser.token) return;
+    
+    try {
+        const res = await fetch("http://localhost:3000/api/me", {
+            headers: { "Authorization": `Bearer ${currentUser.token}` }
+        });
+        if (res.ok) {
+            const profile = await res.json();
+            currentUser = { ...currentUser, ...profile };
+            updateUserAvatar(currentUser);
+            updateUserStatus(currentUser);
+        }
+    } catch (e) {
+        console.error("Erreur chargement profil", e);
+    }
 }
 
 btnLogout.addEventListener("click", () => {
     localStorage.removeItem("chat_token");
     window.location.reload();
+});
+
+// --- PROFILE MANAGEMENT ---
+
+btnUserProfile.addEventListener("click", () => {
+    openProfileModal();
+});
+
+closeProfileModal.addEventListener("click", () => {
+    closeProfileModalFunc();
+});
+
+cancelProfileEdit.addEventListener("click", () => {
+    closeProfileModalFunc();
+});
+
+profileModal.addEventListener("click", (e) => {
+    if (e.target === profileModal) {
+        closeProfileModalFunc();
+    }
+});
+
+async function openProfileModal() {
+    if (!currentUser) return;
+    
+    try {
+        const res = await fetch("http://localhost:3000/api/me", {
+            headers: { "Authorization": `Bearer ${currentUser.token}` }
+        });
+        if (res.ok) {
+            const profile = await res.json();
+            currentUser = { ...currentUser, ...profile };
+            
+            profileUsername.value = profile.username || "";
+            profileBio.value = profile.bio || "";
+            profileStatus.value = profile.status || "online";
+            
+            // Parse avatar and color
+            selectedEmoji = profile.avatar || null;
+            selectedAvatarColor = profile.avatar_color || "#5865F2";
+            
+            // Update color options
+            colorOptions.forEach(btn => {
+                if (btn.dataset.color === selectedAvatarColor) {
+                    btn.classList.add("active");
+                } else {
+                    btn.classList.remove("active");
+                }
+            });
+            
+            updateProfileAvatarPreview();
+            updateProfileAvatarDisplay(selectedEmoji || profile.username.charAt(0).toUpperCase());
+            updateProfileStatusDisplay(profile.status || "online");
+            
+            // Initialize emoji picker if not already done
+            if (!profileEmojiPickerWrapper.querySelector("emoji-picker")) {
+                const picker = document.createElement("emoji-picker");
+                picker.classList.add("light");
+                profileEmojiPickerWrapper.appendChild(picker);
+                
+                picker.addEventListener("emoji-click", (event) => {
+                    selectedEmoji = event.detail.unicode;
+                    updateProfileAvatarPreview();
+                    profileEmojiPickerWrapper.classList.add("hidden");
+                });
+            }
+            
+            profileModal.classList.remove("hidden");
+        }
+    } catch (e) {
+        console.error("Erreur chargement profil", e);
+        alert("Erreur lors du chargement du profil");
+    }
+}
+
+function closeProfileModalFunc() {
+    profileModal.classList.add("hidden");
+}
+
+function updateProfileAvatarDisplay(avatar) {
+    updateAvatarElement(profileAvatarDisplay, avatar, currentUser ? currentUser.username : "", selectedAvatarColor);
+}
+
+function updateProfileAvatarPreview() {
+    // Update the main avatar display
+    if (profileAvatarDisplay) {
+        if (selectedEmoji) {
+            profileAvatarDisplay.textContent = selectedEmoji;
+            profileAvatarDisplay.style.backgroundImage = "";
+        } else {
+            profileAvatarDisplay.textContent = currentUser ? currentUser.username.charAt(0).toUpperCase() : "?";
+            profileAvatarDisplay.style.backgroundImage = "";
+        }
+        profileAvatarDisplay.style.backgroundColor = selectedAvatarColor;
+    }
+}
+
+function updateProfileStatusDisplay(status) {
+    if (profileStatusDisplay) {
+        profileStatusDisplay.className = `status-indicator profile-status-indicator ${status}`;
+    }
+}
+
+// Edit avatar button (in header) - opens emoji picker
+if (editAvatarBtn) {
+    editAvatarBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (profileEmojiPickerWrapper) {
+            profileEmojiPickerWrapper.classList.toggle("hidden");
+        }
+    });
+}
+
+// Close emoji picker when clicking outside
+document.addEventListener("click", (e) => {
+    if (profileEmojiPickerWrapper && !profileEmojiPickerWrapper.contains(e.target) && e.target !== editAvatarBtn && !editAvatarBtn.contains(e.target)) {
+        profileEmojiPickerWrapper.classList.add("hidden");
+    }
+});
+
+// Color picker
+colorOptions.forEach(btn => {
+    btn.addEventListener("click", () => {
+        colorOptions.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        selectedAvatarColor = btn.dataset.color;
+        updateProfileAvatarPreview();
+    });
+});
+
+saveProfileBtn.addEventListener("click", async () => {
+    if (!currentUser) return;
+    
+    const bio = profileBio.value.trim();
+    const status = profileStatus.value;
+    const avatar = selectedEmoji || "";
+    
+    try {
+        const res = await fetch(`http://localhost:3000/api/users/${currentUser.id}/profile`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${currentUser.token}`
+            },
+            body: JSON.stringify({ 
+                bio, 
+                status, 
+                avatar,
+                avatar_color: selectedAvatarColor
+            })
+        });
+        
+        if (res.ok) {
+            const updatedProfile = await res.json();
+            currentUser = { ...currentUser, ...updatedProfile };
+            updateUserAvatar(currentUser);
+            updateUserStatus(currentUser);
+            closeProfileModalFunc();
+        } else {
+            const error = await res.json();
+            alert(error.error || "Erreur lors de la sauvegarde");
+        }
+    } catch (e) {
+        console.error("Erreur sauvegarde profil", e);
+        alert("Erreur de connexion");
+    }
+});
+
+// Show profile card on username click in messages
+function showUserProfileCard(userId, username, positionRect = null) {
+    console.log("═══════════════════════════════════════");
+    console.log("🎯 showUserProfileCard CALLED");
+    console.log("Parameters:", { userId, username, type: typeof userId, positionRect });
+    console.log("═══════════════════════════════════════");
+    
+    if (!userId) {
+        console.error("❌ ERROR: userId is missing or falsy!");
+        console.error("userId value:", userId, "type:", typeof userId);
+        alert("Erreur: ID utilisateur manquant");
+        return;
+    }
+    
+    if (!userProfileCard) {
+        console.error("❌ ERROR: userProfileCard element is null!");
+        alert("Erreur: Élément de carte de profil introuvable");
+        return;
+    }
+    
+    console.log("✅ Pre-checks passed");
+    console.log("Current card state:", {
+        classes: userProfileCard.className,
+        hidden: userProfileCard.classList.contains("hidden"),
+        display: window.getComputedStyle(userProfileCard).display,
+        visibility: window.getComputedStyle(userProfileCard).visibility,
+        opacity: window.getComputedStyle(userProfileCard).opacity
+    });
+    
+    // Show loading state
+    if (profileCardUsername) {
+        profileCardUsername.textContent = "Chargement...";
+        console.log("✅ Set loading text in profileCardUsername");
+    } else {
+        console.error("❌ profileCardUsername is null!");
+    }
+    
+    if (profileCardBio) {
+        profileCardBio.textContent = "";
+    } else {
+        console.error("❌ profileCardBio is null!");
+    }
+    
+    console.log("🌐 Fetching user profile from API...");
+    console.log("URL:", `http://localhost:3000/api/users/${userId}`);
+    
+    fetch(`http://localhost:3000/api/users/${userId}`)
+        .then(res => {
+            console.log("📡 API Response received:", {
+                ok: res.ok,
+                status: res.status,
+                statusText: res.statusText
+            });
+            
+            if (!res.ok) {
+                throw new Error(`Erreur HTTP: ${res.status} - ${res.statusText}`);
+            }
+            return res.json();
+        })
+        .then(user => {
+            console.log("✅ User profile data loaded:", user);
+            
+            // Update username
+            if (profileCardUsername) {
+                profileCardUsername.textContent = user.username;
+                console.log("✅ Updated profileCardUsername to:", user.username);
+            } else {
+                console.error("❌ profileCardUsername is null, cannot update!");
+            }
+            
+            // Update bio
+            if (profileCardBio) {
+                profileCardBio.textContent = user.bio || "Aucune bio";
+                console.log("✅ Updated profileCardBio");
+            } else {
+                console.error("❌ profileCardBio is null, cannot update!");
+            }
+            
+            // Update avatar
+            if (profileCardAvatar) {
+                updateAvatarElement(profileCardAvatar, user.avatar, user.username, user.avatar_color);
+                console.log("✅ Updated profileCardAvatar");
+            } else {
+                console.error("❌ profileCardAvatar is null, cannot update!");
+            }
+            
+            // Update status
+            if (profileCardStatus && user.status) {
+                profileCardStatus.className = `status-indicator ${user.status}`;
+                console.log("✅ Updated profileCardStatus to:", user.status);
+            }
+            
+            // Update created date
+            if (profileCardCreated && user.created_at) {
+                const date = new Date(user.created_at);
+                profileCardCreated.textContent = date.toLocaleDateString("fr-FR", { 
+                    year: "numeric", 
+                    month: "long", 
+                    day: "numeric" 
+                });
+                console.log("✅ Updated profileCardCreated");
+            }
+            
+            // Position the card near the clicked element (like emoji picker)
+            if (positionRect && userProfileCard) {
+                const cardWidth = 320;
+                const cardHeight = 400; // Approximate height
+                const spacing = 10;
+                
+                // Calculate position
+                let left = positionRect.left + positionRect.width + spacing;
+                let top = positionRect.top;
+                
+                // Adjust if card would go off screen
+                if (left + cardWidth > window.innerWidth) {
+                    // Position to the left of the element instead
+                    left = positionRect.left - cardWidth - spacing;
+                }
+                
+                // Adjust vertical position if needed
+                if (top + cardHeight > window.innerHeight) {
+                    top = window.innerHeight - cardHeight - 20;
+                }
+                if (top < 20) {
+                    top = 20;
+                }
+                
+                userProfileCard.style.left = `${left}px`;
+                userProfileCard.style.top = `${top}px`;
+                userProfileCard.style.right = "auto";
+                
+                console.log("📍 Positioned card at:", { left, top });
+            }
+            
+            // Show the card
+            console.log("🎨 Removing 'hidden' class from userProfileCard...");
+            console.log("Before:", {
+                classes: userProfileCard.className,
+                hasHidden: userProfileCard.classList.contains("hidden")
+            });
+            
+            userProfileCard.classList.remove("hidden");
+            
+            console.log("After:", {
+                classes: userProfileCard.className,
+                hasHidden: userProfileCard.classList.contains("hidden")
+            });
+            
+            // Check computed styles
+            const computedStyles = window.getComputedStyle(userProfileCard);
+            console.log("📊 Computed styles after removal:", {
+                display: computedStyles.display,
+                visibility: computedStyles.visibility,
+                opacity: computedStyles.opacity,
+                zIndex: computedStyles.zIndex,
+                position: computedStyles.position,
+                left: computedStyles.left,
+                top: computedStyles.top
+            });
+            
+            // Force a reflow to ensure the change is applied
+            void userProfileCard.offsetHeight;
+            
+            console.log("✅ Profile card should now be visible!");
+            console.log("═══════════════════════════════════════");
+        })
+        .catch(e => {
+            console.error("❌ ERROR in showUserProfileCard:", e);
+            console.error("Error details:", {
+                message: e.message,
+                stack: e.stack,
+                name: e.name
+            });
+            alert("Impossible de charger le profil de l'utilisateur: " + e.message);
+        });
+}
+
+// Handle username click
+function handleUsernameClick(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    const target = e.currentTarget || e.target;
+    const userId = target.getAttribute("data-user-id");
+    const username = target.getAttribute("data-username");
+    
+    console.log("Username clicked:", { userId, username, target }); // Debug
+    
+    if (userId && userProfileCard) {
+        showUserProfileCard(userId, username);
+    } else {
+        console.error("Missing userId or userProfileCard element", { userId, userProfileCard });
+    }
+    
+    return false;
+}
+
+// TEST FUNCTION - For testing profile card display
+// Use in console: testProfileCard(1) or testProfileCardShow(1)
+window.testProfileCard = function(userId = 1) {
+    console.log("🧪 TEST: Forcing profile card display for userId:", userId);
+    if (userProfileCard) {
+        userProfileCard.classList.remove("hidden");
+        console.log("✅ Card should now be visible. Classes:", userProfileCard.className);
+        const styles = window.getComputedStyle(userProfileCard);
+        console.log("Computed styles:", {
+            display: styles.display,
+            visibility: styles.visibility,
+            opacity: styles.opacity,
+            zIndex: styles.zIndex
+        });
+    } else {
+        console.error("❌ userProfileCard not found");
+    }
+};
+
+window.testProfileCardShow = function(userId = 1) {
+    console.log("🧪 TEST: Calling showUserProfileCard for userId:", userId);
+    showUserProfileCard(userId, "Test User");
+};
+
+// Close profile card when clicking outside
+document.addEventListener("click", (e) => {
+    // Don't close if clicking on a clickable username
+    if (e.target.classList.contains("clickable-username") || e.target.closest(".clickable-username")) {
+        return;
+    }
+    
+    // Don't close if clicking inside the profile card
+    if (userProfileCard && userProfileCard.contains(e.target)) {
+        return;
+    }
+    
+    // Close the card
+    if (userProfileCard && !userProfileCard.classList.contains("hidden")) {
+        userProfileCard.classList.add("hidden");
+    }
 });
 
 // Auto-login check
@@ -901,11 +1963,110 @@ async function loadConversations() {
     if (!currentUser) return;
     try {
         const res = await fetch(`http://localhost:3000/api/conversations/${currentUser.id}`);
-        users = await res.json();
+        const conversations = await res.json();
+        
+        // Load full user profiles
+        users = await Promise.all(conversations.map(async (user) => {
+            try {
+                const profileRes = await fetch(`http://localhost:3000/api/users/${user.id}`);
+                if (profileRes.ok) {
+                    return await profileRes.json();
+                }
+                return user;
+            } catch (e) {
+                return user;
+            }
+        }));
+        
         renderUsers();
     } catch (e) {
         console.error("Erreur chargement conversations", e);
     }
+}
+
+// Load channel members
+let channelMembers = [];
+
+async function loadChannelMembers(channelId) {
+    if (!channelId) return;
+    
+    try {
+        const res = await fetch(`http://localhost:3000/api/channels/${channelId}/members`);
+        if (res.ok) {
+            channelMembers = await res.json();
+            renderChannelMembers();
+        } else {
+            console.error("Erreur chargement membres channel");
+            channelMembers = [];
+            renderChannelMembers();
+        }
+    } catch (e) {
+        console.error("Erreur chargement membres channel", e);
+        channelMembers = [];
+        renderChannelMembers();
+    }
+}
+
+function renderChannelMembers() {
+    if (!channelMembersList) return;
+    
+    channelMembersList.innerHTML = "";
+    
+    if (channelMembersCount) {
+        channelMembersCount.textContent = `(${channelMembers.length})`;
+    }
+    
+    if (channelMembers.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "empty-members";
+        emptyDiv.textContent = "Aucun membre";
+        emptyDiv.style.padding = "0.5rem 0.75rem";
+        emptyDiv.style.color = "hsl(var(--muted-foreground))";
+        emptyDiv.style.fontSize = "0.875rem";
+        channelMembersList.appendChild(emptyDiv);
+        return;
+    }
+    
+    channelMembers.forEach(member => {
+        const div = document.createElement("div");
+        div.className = "member-item";
+        
+        const avatar = document.createElement("div");
+        avatar.className = "msg-avatar";
+        updateAvatarElement(avatar, member.avatar, member.username, member.avatar_color);
+        
+        const username = document.createElement("span");
+        username.className = "member-username";
+        username.textContent = member.username;
+        
+        const statusIndicator = document.createElement("div");
+        statusIndicator.className = `status-indicator ${member.status || 'online'}`;
+        statusIndicator.style.position = "absolute";
+        statusIndicator.style.bottom = "0";
+        statusIndicator.style.right = "0";
+        
+        const avatarContainer = document.createElement("div");
+        avatarContainer.className = "avatar-container";
+        avatarContainer.style.position = "relative";
+        avatarContainer.appendChild(avatar);
+        avatarContainer.appendChild(statusIndicator);
+        
+        div.appendChild(avatarContainer);
+        div.appendChild(username);
+        
+        // Make member clickable to show profile
+        div.style.cursor = "pointer";
+        div.title = `Voir le profil de ${member.username}`;
+        div.onclick = (e) => {
+            e.stopPropagation();
+            if (member.id) {
+                const rect = div.getBoundingClientRect();
+                showUserProfileCard(member.id, member.username, rect);
+            }
+        };
+        
+        channelMembersList.appendChild(div);
+    });
 }
 
 socket.on("new_conversation", (user) => {
@@ -922,10 +2083,29 @@ function renderUsers() {
         if (u.id === currentUser.id) return; // Don't show self
         const div = document.createElement("div");
         div.className = `channel-item ${currentRecipient && currentRecipient.id === u.id ? 'active' : ''}`;
-        div.innerHTML = `
-            <div style="width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></div>
-            ${u.username}
-        `;
+        
+        const avatar = document.createElement("div");
+        avatar.className = "msg-avatar";
+        updateAvatarElement(avatar, u.avatar, u.username, u.avatar_color);
+        
+        const username = document.createElement("span");
+        username.textContent = u.username;
+        
+        const statusIndicator = document.createElement("div");
+        statusIndicator.className = `status-indicator ${u.status || 'online'}`;
+        statusIndicator.style.position = "absolute";
+        statusIndicator.style.bottom = "0";
+        statusIndicator.style.right = "0";
+        
+        const avatarContainer = document.createElement("div");
+        avatarContainer.className = "avatar-container";
+        avatarContainer.style.position = "relative";
+        avatarContainer.appendChild(avatar);
+        avatarContainer.appendChild(statusIndicator);
+        
+        div.appendChild(avatarContainer);
+        div.appendChild(username);
+        
         div.onclick = () => {
             startDM(u);
             if (window.innerWidth <= 768) sidebar.classList.remove("open");
@@ -969,6 +2149,15 @@ function joinChannel(channel) {
         }
     }
 
+    // Load and display channel members
+    loadChannelMembers(channel.id);
+    
+    // Show members section
+    if (channelMembersHeader && channelMembersList) {
+        channelMembersHeader.style.display = "flex";
+        channelMembersList.style.display = "block";
+    }
+
     socket.emit("join_channel", channel.id);
 }
 
@@ -984,6 +2173,12 @@ function startDM(user) {
     chatChannelName.textContent = `@ ${user.username}`;
     chatChannelDesc.textContent = "Message privé";
     messagesContainer.innerHTML = "";
+
+    // Hide channel members section for DMs
+    if (channelMembersHeader && channelMembersList) {
+        channelMembersHeader.style.display = "none";
+        channelMembersList.style.display = "none";
+    }
 
     if (btnHeaderChannelSettings) {
         btnHeaderChannelSettings.classList.add("hidden");

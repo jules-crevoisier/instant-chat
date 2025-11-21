@@ -12,9 +12,23 @@ db.serialize(() => {
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE,
-            password TEXT
+            password TEXT,
+            bio TEXT,
+            avatar TEXT,
+            avatar_color TEXT DEFAULT '#5865F2',
+            status TEXT DEFAULT 'online',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    `);
+    `, (err) => {
+        if (!err) {
+            // Add profile columns if they don't exist
+            db.run("ALTER TABLE users ADD COLUMN bio TEXT", () => {});
+            db.run("ALTER TABLE users ADD COLUMN avatar TEXT", () => {});
+            db.run("ALTER TABLE users ADD COLUMN avatar_color TEXT DEFAULT '#5865F2'", () => {});
+            db.run("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'online'", () => {});
+            db.run("ALTER TABLE users ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP", () => {});
+        }
+    });
 
     // Table Channels
     db.run(`
@@ -46,6 +60,10 @@ db.serialize(() => {
             recipient_id INTEGER,
             reply_to_id INTEGER,
             sender_id INTEGER,
+            file_path TEXT,
+            file_name TEXT,
+            file_type TEXT,
+            file_size INTEGER,
             date DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(channel_id) REFERENCES channels(id),
             FOREIGN KEY(recipient_id) REFERENCES users(id),
@@ -59,6 +77,10 @@ db.serialize(() => {
             db.run("ALTER TABLE messages ADD COLUMN recipient_id INTEGER", () => { });
             db.run("ALTER TABLE messages ADD COLUMN reply_to_id INTEGER", () => { });
             db.run("ALTER TABLE messages ADD COLUMN sender_id INTEGER", () => { });
+            db.run("ALTER TABLE messages ADD COLUMN file_path TEXT", () => { });
+            db.run("ALTER TABLE messages ADD COLUMN file_name TEXT", () => { });
+            db.run("ALTER TABLE messages ADD COLUMN file_type TEXT", () => { });
+            db.run("ALTER TABLE messages ADD COLUMN file_size INTEGER", () => { });
         }
     });
 
