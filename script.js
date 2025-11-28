@@ -1,5 +1,115 @@
 const socket = io("http://localhost:3000");
 
+// Configuration
+const API_BASE_URL = "http://localhost:3000";
+
+// Icon helper functions (shadcn/ui style - Lucide icons)
+const Icons = {
+    // Create SVG icon element
+    create: (path, size = 20, className = "") => {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("width", size);
+        svg.setAttribute("height", size);
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("fill", "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("stroke-width", "2");
+        svg.setAttribute("stroke-linecap", "round");
+        svg.setAttribute("stroke-linejoin", "round");
+        if (className) svg.classList.add(className);
+        
+        if (Array.isArray(path)) {
+            path.forEach(p => {
+                const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                pathEl.setAttribute("d", p);
+                svg.appendChild(pathEl);
+            });
+        } else {
+            const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            pathEl.setAttribute("d", path);
+            svg.appendChild(pathEl);
+        }
+        
+        return svg;
+    },
+    
+    // Icon definitions (Lucide paths)
+    edit: "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7",
+    edit2: "M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z",
+    
+    trash: "M3 6h18",
+    trash2: "M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16",
+    
+    reply: "M9 10l-5 5 5 5",
+    reply2: "M9 15l5-5-5-5",
+    
+    plus: "M12 5v14",
+    plus2: "M5 12h14",
+    
+    x: "M18 6L6 18",
+    x2: "M6 6l12 12",
+    
+    send: "M22 2L11 13",
+    send2: "M22 2l-7 20-4-9-9-4z",
+    
+    smile: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10",
+    smile2: "M8 14s1.5 2 4 2 4-2 4-2",
+    smile3: "M9 9h.01",
+    smile4: "M15 9h.01",
+    
+    paperclip: "M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48",
+    
+    moreVertical: "M12 12h.01",
+    moreVertical2: "M12 19h.01",
+    moreVertical3: "M12 5h.01",
+    
+    hash: "M4 9h16",
+    hash2: "M4 15h16",
+    hash3: "M10 3v6",
+    hash4: "M14 3v6",
+    hash5: "M10 21v-6",
+    hash6: "M14 21v-6",
+    
+    user: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2",
+    user2: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8",
+    
+    logOut: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4",
+    logOut2: "M16 17l5-5-5-5",
+    logOut3: "M21 12H9",
+    
+    menu: "M3 12h18",
+    menu2: "M3 6h18",
+    menu3: "M3 18h18",
+    
+    settings: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z",
+    settings2: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6",
+    
+    messageSquare: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
+    
+    // Helper to get icon by name
+    get: (name, size = 20, className = "") => {
+        const iconMap = {
+            edit: () => Icons.create([Icons.edit, Icons.edit2], size, className),
+            trash: () => Icons.create([Icons.trash, Icons.trash2], size, className),
+            reply: () => Icons.create([Icons.reply, Icons.reply2], size, className),
+            plus: () => Icons.create([Icons.plus, Icons.plus2], size, className),
+            x: () => Icons.create([Icons.x, Icons.x2], size, className),
+            send: () => Icons.create([Icons.send, Icons.send2], size, className),
+            smile: () => Icons.create([Icons.smile, Icons.smile2, Icons.smile3, Icons.smile4], size, className),
+            paperclip: () => Icons.create(Icons.paperclip, size, className),
+            moreVertical: () => Icons.create([Icons.moreVertical, Icons.moreVertical2, Icons.moreVertical3], size, className),
+            hash: () => Icons.create([Icons.hash, Icons.hash2, Icons.hash3, Icons.hash4, Icons.hash5, Icons.hash6], size, className),
+            user: () => Icons.create([Icons.user, Icons.user2], size, className),
+            logOut: () => Icons.create([Icons.logOut, Icons.logOut2, Icons.logOut3], size, className),
+            menu: () => Icons.create([Icons.menu, Icons.menu2, Icons.menu3], size, className),
+            settings: () => Icons.create([Icons.settings, Icons.settings2], size, className),
+            messageSquare: () => Icons.create(Icons.messageSquare, size, className)
+        };
+        
+        return iconMap[name] ? iconMap[name]() : null;
+    }
+};
+
 // State
 let currentUser = null;
 let currentChannel = null;
@@ -103,9 +213,123 @@ const filePreviewArea = document.getElementById("file-preview-area");
 const filePreviewList = document.getElementById("file-preview-list");
 const btnClearFiles = document.getElementById("btn-clear-files");
 
+// Search elements
+const searchPanel = document.getElementById("search-panel");
+const searchInput = document.getElementById("search-input");
+const searchFilterUser = document.getElementById("search-filter-user");
+const searchFilterDate = document.getElementById("search-filter-date");
+const searchResultsCount = document.getElementById("search-results-count");
+const btnSearch = document.getElementById("btn-search");
+const btnCloseSearch = document.getElementById("btn-close-search");
+const btnSearchPrev = document.getElementById("btn-search-prev");
+const btnSearchNext = document.getElementById("btn-search-next");
+const btnThemeToggle = document.getElementById("btn-theme-toggle");
+const themeIconSun = document.getElementById("theme-icon-sun");
+const themeIconMoon = document.getElementById("theme-icon-moon");
+const btnPinnedMessages = document.getElementById("btn-pinned-messages");
+const pinnedMessagesPanel = document.getElementById("pinned-messages-panel");
+const pinnedMessagesList = document.getElementById("pinned-messages-list");
+const btnClosePinned = document.getElementById("btn-close-pinned");
+
 // File upload state
 let selectedFiles = [];
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILES_PER_UPLOAD = 10; // Maximum files per upload
+
+// Allowed file types and extensions (must match backend)
+const ALLOWED_FILE_TYPES = {
+    // Images
+    "image/jpeg": [".jpg", ".jpeg"],
+    "image/png": [".png"],
+    "image/gif": [".gif"],
+    "image/webp": [".webp"],
+    // Audio
+    "audio/mpeg": [".mp3"],
+    "audio/wav": [".wav"],
+    "audio/ogg": [".ogg"],
+    "audio/mp4": [".m4a"],
+    // Video
+    "video/mp4": [".mp4"],
+    "video/webm": [".webm"],
+    "video/ogg": [".ogv"],
+    "video/quicktime": [".mov"],
+    // Documents
+    "application/pdf": [".pdf"],
+    "application/msword": [".doc"],
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+    "application/vnd.ms-excel": [".xls"],
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+    "application/vnd.ms-powerpoint": [".ppt"],
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
+    "text/plain": [".txt"],
+    "text/csv": [".csv"]
+};
+
+const ALLOWED_EXTENSIONS = new Set();
+Object.values(ALLOWED_FILE_TYPES).forEach(exts => {
+    exts.forEach(ext => ALLOWED_EXTENSIONS.add(ext.toLowerCase()));
+});
+
+// Dangerous extensions to block
+const DANGEROUS_EXTENSIONS = new Set([
+    ".exe", ".bat", ".cmd", ".com", ".pif", ".scr", ".vbs", ".js", ".jar",
+    ".sh", ".ps1", ".dll", ".msi", ".app", ".deb", ".rpm", ".dmg",
+    ".php", ".asp", ".aspx", ".jsp", ".py", ".rb", ".pl", ".cgi"
+]);
+
+// Validate file before upload
+function validateFile(file) {
+    const errors = [];
+    
+    // Check file size
+    if (file.size > MAX_FILE_SIZE) {
+        errors.push(`"${file.name}" dépasse la taille maximale de 50MB`);
+        return { valid: false, errors };
+    }
+    
+    // Check if file is empty
+    if (file.size === 0) {
+        errors.push(`"${file.name}" est vide`);
+        return { valid: false, errors };
+    }
+    
+    // Get file extension
+    const fileName = file.name.toLowerCase();
+    const fileExt = fileName.substring(fileName.lastIndexOf('.'));
+    
+    // Block dangerous extensions
+    if (DANGEROUS_EXTENSIONS.has(fileExt)) {
+        errors.push(`"${file.name}" est un type de fichier dangereux et n'est pas autorisé`);
+        return { valid: false, errors };
+    }
+    
+    // Check if extension is allowed
+    if (!ALLOWED_EXTENSIONS.has(fileExt)) {
+        errors.push(`"${file.name}" a une extension non autorisée`);
+        return { valid: false, errors };
+    }
+    
+    // Check MIME type
+    if (!ALLOWED_FILE_TYPES[file.type]) {
+        errors.push(`"${file.name}" a un type MIME non autorisé`);
+        return { valid: false, errors };
+    }
+    
+    // Verify MIME type matches extension
+    const allowedExts = ALLOWED_FILE_TYPES[file.type];
+    if (!allowedExts.includes(fileExt)) {
+        errors.push(`"${file.name}" : le type MIME ne correspond pas à l'extension`);
+        return { valid: false, errors };
+    }
+    
+    // Check filename length
+    if (file.name.length > 255) {
+        errors.push(`"${file.name}" : le nom de fichier est trop long (max 255 caractères)`);
+        return { valid: false, errors };
+    }
+    
+    return { valid: true, errors: [] };
+}
 
 // --- AUTHENTICATION ---
 
@@ -457,10 +681,88 @@ socket.on("reaction_update", (data) => {
 
 // --- CHAT ---
 
+// Store all messages for search
+let allMessages = [];
+let isLoadingMore = false;
+let hasMoreMessages = true;
+let oldestMessageId = null;
+
 socket.on("message_history", (messages) => {
+    allMessages = messages; // Store for search
     messagesContainer.innerHTML = "";
-    messages.forEach(msg => displayMessage(msg));
+    messages.forEach(msg => {
+        // Handle deleted messages
+        if (msg.deleted) {
+            msg.message = "[Message supprimé]";
+        }
+        // Parse pinned status
+        msg.pinned = msg.pinned === 1 || msg.pinned === true;
+        displayMessage(msg);
+    });
+    
+    // Track oldest message for pagination
+    if (messages.length > 0) {
+        oldestMessageId = messages[0].id; // First message is oldest (after reverse)
+        hasMoreMessages = messages.length >= 50; // If we got 50, there might be more
+    } else {
+        hasMoreMessages = false;
+    }
+    
     scrollToBottom();
+    
+    // Update user filter dropdown
+    updateSearchUserFilter();
+    
+    // Setup scroll listener for infinite scroll
+    setupInfiniteScroll();
+});
+
+// Handle more messages from pagination
+socket.on("more_messages", (messages) => {
+    if (messages.length === 0) {
+        hasMoreMessages = false;
+        isLoadingMore = false;
+        return;
+    }
+    
+    // Store scroll position before adding messages
+    const oldScrollHeight = messagesContainer.scrollHeight;
+    const oldScrollTop = messagesContainer.scrollTop;
+    
+    // Add messages at the top
+    messages.forEach(msg => {
+        if (msg.deleted) {
+            msg.message = "[Message supprimé]";
+        }
+        // Insert at the beginning
+        const firstChild = messagesContainer.firstChild;
+        const msgElement = displayMessage(msg, false); // Don't append, return element
+        if (firstChild) {
+            messagesContainer.insertBefore(msgElement, firstChild);
+        } else {
+            messagesContainer.appendChild(msgElement);
+        }
+    });
+    
+    // Add to allMessages at the beginning
+    allMessages = [...messages, ...allMessages];
+    
+    // Track oldest message
+    if (messages.length > 0) {
+        oldestMessageId = messages[0].id;
+        hasMoreMessages = messages.length >= 50;
+    } else {
+        hasMoreMessages = false;
+    }
+    
+    // Restore scroll position
+    const newScrollHeight = messagesContainer.scrollHeight;
+    messagesContainer.scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight);
+    
+    isLoadingMore = false;
+    
+    // Update search filter
+    updateSearchUserFilter();
 });
 
 socket.on("receive_message", (msg) => {
@@ -479,8 +781,19 @@ socket.on("receive_message", (msg) => {
     }
 
     if (shouldDisplay) {
+        // Add to allMessages for search
+        // Parse pinned status
+        msg.pinned = msg.pinned === 1 || msg.pinned === true;
+        allMessages.push(msg);
         displayMessage(msg);
         scrollToBottom();
+        
+        // Update search if active
+        if (searchPanel && !searchPanel.classList.contains("hidden")) {
+            if (typeof performSearch === 'function') {
+                performSearch();
+            }
+        }
     }
 
     // Notifications
@@ -522,7 +835,7 @@ function cancelReply() {
     replyIndicator.classList.add("hidden");
 }
 
-function displayMessage(data) {
+function displayMessage(data, append = true) {
     const div = document.createElement("div");
     // All messages aligned to the right
     div.className = "msg";
@@ -696,36 +1009,106 @@ function displayMessage(data) {
     const content = document.createElement("div");
     content.className = "msg-content";
 
-    // Handle file attachments
-    if (data.file_path) {
+    // Pin indicator
+    if (data.pinned) {
+        const pinIndicator = document.createElement("div");
+        pinIndicator.className = "msg-pinned-indicator";
+        pinIndicator.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="3" x2="6" y2="15"></line>
+                <circle cx="18" cy="6" r="3"></circle>
+                <circle cx="6" cy="18" r="3"></circle>
+                <path d="M18 9a9 9 0 0 1-9 9"></path>
+            </svg>
+            Épinglé
+        `;
+        content.appendChild(pinIndicator);
+    }
+
+    // Handle file attachments (support multiple files)
+    const filesToDisplay = data.files || (data.file_path ? [{
+        file_path: data.file_path,
+        file_name: data.file_name,
+        file_type: data.file_type,
+        file_size: data.file_size
+    }] : null);
+    
+    if (filesToDisplay && filesToDisplay.length > 0) {
+        // Separate images from other files (like Discord)
+        const imageFiles = filesToDisplay.filter(f => f.file_type && f.file_type.startsWith("image/"));
+        const otherFiles = filesToDisplay.filter(f => !f.file_type || !f.file_type.startsWith("image/"));
+        
+        // Create container for all files
         const fileContainer = document.createElement("div");
         fileContainer.className = "msg-file-container";
         
-        const fileIcon = getFileIcon(data.file_type || "");
-        const fileName = data.file_name || "Fichier";
-        const fileSize = data.file_size ? formatFileSize(data.file_size) : "";
-        const fileUrl = `http://localhost:3000${data.file_path}`;
+        // Handle images in a grid (Discord-style)
+        if (imageFiles.length > 0) {
+            const imageGrid = document.createElement("div");
+            imageGrid.className = `msg-image-grid msg-image-grid-${imageFiles.length}`;
+            
+            imageFiles.forEach((fileData, index) => {
+                const fileName = fileData.file_name || "Image";
+                const fileUrl = `${API_BASE_URL}${fileData.file_path}`;
+                
+                const imageWrapper = document.createElement("div");
+                imageWrapper.className = "msg-image-wrapper";
+                
+                const img = document.createElement("img");
+                img.className = "msg-file-image";
+                img.alt = fileName;
+                img.loading = "lazy";
+                img.decoding = "async";
+                // Use data-src for lazy loading with Intersection Observer
+                img.dataset.src = fileUrl;
+                img.onclick = () => window.open(fileUrl, "_blank");
+                
+                // Use Intersection Observer for better lazy loading
+                if ('IntersectionObserver' in window) {
+                    const imageObserver = new IntersectionObserver((entries, observer) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                const img = entry.target;
+                                img.src = img.dataset.src;
+                                img.removeAttribute('data-src');
+                                observer.unobserve(img);
+                            }
+                        });
+                    }, {
+                        rootMargin: '50px' // Start loading 50px before image is visible
+                    });
+                    imageObserver.observe(img);
+                } else {
+                    // Fallback for browsers without IntersectionObserver
+                    img.src = fileUrl;
+                }
+                
+                imageWrapper.appendChild(img);
+                imageGrid.appendChild(imageWrapper);
+            });
+            
+            fileContainer.appendChild(imageGrid);
+        }
         
-        const fileElement = document.createElement("div");
-        fileElement.className = "msg-file";
-        
-        // Determine file type and create appropriate display
-        if (data.file_type && data.file_type.startsWith("image/")) {
-            // Image preview
-            const img = document.createElement("img");
-            img.src = fileUrl;
-            img.className = "msg-file-image";
-            img.alt = fileName;
-            img.onclick = () => window.open(fileUrl, "_blank");
-            fileElement.appendChild(img);
-        } else if (data.file_type && data.file_type.startsWith("audio/")) {
+        // Handle other files (documents, audio, video)
+        otherFiles.forEach((fileData, index) => {
+            const fileIcon = getFileIcon(fileData.file_type || "");
+            const fileName = fileData.file_name || "Fichier";
+            const fileSize = fileData.file_size ? formatFileSize(fileData.file_size) : "";
+            const fileUrl = `${API_BASE_URL}${fileData.file_path}`;
+            
+            const fileElement = document.createElement("div");
+            fileElement.className = "msg-file";
+            
+            // Determine file type and create appropriate display
+            if (fileData.file_type && fileData.file_type.startsWith("audio/")) {
             // Audio player
             const audio = document.createElement("audio");
             audio.src = fileUrl;
             audio.controls = true;
             audio.className = "msg-file-audio";
             fileElement.appendChild(audio);
-        } else if (data.file_type && data.file_type.startsWith("video/")) {
+            } else if (fileData.file_type && fileData.file_type.startsWith("video/")) {
             // Video player
             const video = document.createElement("video");
             video.src = fileUrl;
@@ -749,12 +1132,22 @@ function displayMessage(data) {
         }
         
         fileContainer.appendChild(fileElement);
+        });
+        
         content.appendChild(fileContainer);
     }
 
     // Handle text message with mentions
     if (data.message) {
         let text = data.message;
+        
+        // Check if message is deleted
+        if (data.deleted || text === "[Message supprimé]") {
+            const textDiv = document.createElement("div");
+            textDiv.className = "msg-text deleted";
+            textDiv.innerHTML = '<em style="opacity: 0.6; font-style: italic;">Ce message a été supprimé</em>';
+            content.appendChild(textDiv);
+        } else {
         const mentionRegex = /@(\w+)/g;
         text = text.replace(mentionRegex, (match, username) => {
             if (username === currentUser.username) {
@@ -766,7 +1159,18 @@ function displayMessage(data) {
         const textDiv = document.createElement("div");
         textDiv.className = "msg-text";
         textDiv.innerHTML = text;
+            
+            // Add "edited" indicator if message was edited
+            if (data.edited) {
+                const editedSpan = document.createElement("span");
+                editedSpan.className = "msg-edited";
+                editedSpan.textContent = " (modifié)";
+                editedSpan.title = data.edited_at ? `Modifié le ${new Date(data.edited_at).toLocaleString("fr-FR")}` : "Modifié";
+                textDiv.appendChild(editedSpan);
+            }
+            
         content.appendChild(textDiv);
+        }
     }
 
     // Reactions Container
@@ -797,10 +1201,40 @@ function displayMessage(data) {
     const actionsDiv = document.createElement("div");
     actionsDiv.className = "msg-actions";
 
+    // Pin/Unpin Button (only for own messages)
+    if ((data.sender_id === currentUser.id || data.username === currentUser.username) && !data.deleted) {
+        const pinBtn = document.createElement("button");
+        pinBtn.className = "msg-action-btn";
+        pinBtn.setAttribute('data-pin-btn', 'true');
+        const isPinned = data.pinned === 1 || data.pinned === true;
+        pinBtn.innerHTML = isPinned ? `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="3" x2="6" y2="15"></line>
+                <circle cx="18" cy="6" r="3"></circle>
+                <circle cx="6" cy="18" r="3"></circle>
+                <path d="M18 9a9 9 0 0 1-9 9"></path>
+            </svg>
+        ` : `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="6" y1="3" x2="6" y2="15"></line>
+                <circle cx="18" cy="6" r="3"></circle>
+                <circle cx="6" cy="18" r="3"></circle>
+                <path d="M18 9a9 9 0 0 1-9 9"></path>
+            </svg>
+        `;
+        pinBtn.title = isPinned ? "Désépingler" : "Épingler";
+        pinBtn.onclick = (e) => {
+            e.stopPropagation();
+            togglePinMessage(data.id, isPinned);
+        };
+        actionsDiv.appendChild(pinBtn);
+    }
+
     // Add Reaction Button
     const addBtn = document.createElement("button");
     addBtn.className = "msg-action-btn";
-    addBtn.innerHTML = "+";
+    const plusIcon = Icons.get("plus", 16);
+    if (plusIcon) addBtn.appendChild(plusIcon);
     addBtn.title = "Ajouter une réaction";
     addBtn.onclick = (e) => {
         e.stopPropagation();
@@ -811,7 +1245,8 @@ function displayMessage(data) {
     // Reply Button
     const replyBtn = document.createElement("button");
     replyBtn.className = "msg-action-btn";
-    replyBtn.innerHTML = "↩";
+    const replyIcon = Icons.get("reply", 16);
+    if (replyIcon) replyBtn.appendChild(replyIcon);
     replyBtn.title = "Répondre";
     replyBtn.onclick = (e) => {
         e.stopPropagation();
@@ -819,17 +1254,87 @@ function displayMessage(data) {
     };
     actionsDiv.appendChild(replyBtn);
 
+    // Edit and Delete buttons (only for own messages and not deleted)
+    if ((data.sender_id === currentUser.id || data.username === currentUser.username) && !data.deleted) {
+        // Edit Button (only if message has text content, not just files)
+        if (data.message && data.message.trim() && data.message !== "[Message supprimé]") {
+            const editBtn = document.createElement("button");
+            editBtn.className = "msg-action-btn";
+            const editIcon = Icons.get("edit", 16);
+            if (editIcon) editBtn.appendChild(editIcon);
+            editBtn.title = "Modifier";
+            editBtn.onclick = (e) => {
+                e.stopPropagation();
+                startEditMessage(data.id, data.message, data.channel_id, data.recipient_id);
+            };
+            actionsDiv.appendChild(editBtn);
+        }
+
+        // Delete Button
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "msg-action-btn";
+        const trashIcon = Icons.get("trash", 16);
+        if (trashIcon) deleteBtn.appendChild(trashIcon);
+        deleteBtn.title = "Supprimer";
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteMessage(data.id, data.channel_id, data.recipient_id);
+        };
+        actionsDiv.appendChild(deleteBtn);
+    }
+
     reactionsDiv.appendChild(actionsDiv);
 
     div.appendChild(msgHeader);
     div.appendChild(content);
     div.appendChild(reactionsDiv);
 
-    messagesContainer.appendChild(div);
+    if (append) {
+        messagesContainer.appendChild(div);
+    }
+    return div;
 }
 
 function scrollToBottom() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Setup infinite scroll
+function setupInfiniteScroll() {
+    // Remove existing listener if any
+    if (messagesContainer._scrollListener) {
+        messagesContainer.removeEventListener("scroll", messagesContainer._scrollListener);
+    }
+    
+    messagesContainer._scrollListener = () => {
+        // Check if scrolled near the top (within 200px)
+        if (messagesContainer.scrollTop < 200 && !isLoadingMore && hasMoreMessages) {
+            loadMoreMessages();
+        }
+    };
+    
+    messagesContainer.addEventListener("scroll", messagesContainer._scrollListener);
+}
+
+// Load more messages
+function loadMoreMessages() {
+    if (isLoadingMore || !hasMoreMessages || !oldestMessageId) return;
+    
+    isLoadingMore = true;
+    
+    const data = {
+        beforeMessageId: oldestMessageId,
+        limit: 50
+    };
+    
+    if (currentChannel) {
+        data.channelId = currentChannel.id;
+    } else if (currentRecipient && currentUser) {
+        data.recipientId = currentRecipient.id;
+        data.myId = currentUser.id;
+    }
+    
+    socket.emit("load_more_messages", data);
 }
 
 async function sendMessage() {
@@ -851,17 +1356,21 @@ async function sendMessage() {
         }
     }
 
-    // Send message(s) - one per file or one with message
+    // Send message with all files in one message
     if (uploadedFiles.length > 0) {
-        for (const file of uploadedFiles) {
-            const payload = {
-                username: currentUser.username,
-                message: message || file.originalName,
-                reply_to_id: activeReply ? activeReply.id : null,
+        // Prepare files array
+        const files = uploadedFiles.map(file => ({
                 file_path: file.path,
                 file_name: file.originalName,
                 file_type: file.mimetype,
                 file_size: file.size
+        }));
+
+        const payload = {
+            username: currentUser.username,
+            message: message || (uploadedFiles.length === 1 ? uploadedFiles[0].originalName : `${uploadedFiles.length} fichiers`),
+            reply_to_id: activeReply ? activeReply.id : null,
+            files: files
             };
 
             if (currentChannel) {
@@ -873,7 +1382,6 @@ async function sendMessage() {
             }
 
             socket.emit("send_message", payload);
-        }
     } else {
         // Regular text message
         const payload = {
@@ -897,16 +1405,264 @@ async function sendMessage() {
     clearSelectedFiles();
     cancelReply();
     closeAutocomplete();
+    stopTyping(); // Stop typing indicator when message is sent
 }
 
+// Edit message functionality
+let editingMessageId = null;
+let editingMessageElement = null;
+let originalMessageText = null;
+
+function startEditMessage(messageId, currentMessage, channelId, recipientId) {
+    editingMessageId = messageId;
+    
+    // Find the message element
+    const msgElement = document.getElementById(`msg-${messageId}`);
+    if (!msgElement) return;
+    
+    editingMessageElement = msgElement;
+    const textDiv = msgElement.querySelector(".msg-text");
+    if (!textDiv) return;
+    
+    // Get the original text (remove HTML from mentions and edited indicator)
+    originalMessageText = textDiv.textContent.replace(/\s*\(modifié\)$/, "").trim();
+    
+    // Create edit input
+    const editInput = document.createElement("input");
+    editInput.type = "text";
+    editInput.className = "msg-edit-input";
+    editInput.value = originalMessageText;
+    
+    // Replace text div with input
+    const parent = textDiv.parentNode;
+    parent.replaceChild(editInput, textDiv);
+    editInput.focus();
+    editInput.select();
+    
+    // Create buttons container
+    const editActions = document.createElement("div");
+    editActions.className = "msg-edit-actions";
+    
+    const saveBtn = document.createElement("button");
+    saveBtn.textContent = "Enregistrer";
+    saveBtn.className = "msg-edit-btn save";
+    saveBtn.onclick = () => {
+        const newMessage = editInput.value.trim();
+        if (newMessage && newMessage !== originalMessageText) {
+            saveEditMessage(messageId, newMessage, channelId, recipientId);
+        } else {
+            cancelEditMessage();
+        }
+    };
+    
+    const cancelBtn = document.createElement("button");
+    cancelBtn.textContent = "Annuler";
+    cancelBtn.className = "msg-edit-btn cancel";
+    cancelBtn.onclick = cancelEditMessage;
+    
+    editActions.appendChild(saveBtn);
+    editActions.appendChild(cancelBtn);
+    parent.appendChild(editActions);
+    
+    // Handle Enter and Escape keys
+    editInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            saveBtn.click();
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancelEditMessage();
+        }
+    });
+}
+
+function cancelEditMessage() {
+    if (!editingMessageElement || !editingMessageId || !originalMessageText) return;
+    
+    const msgElement = editingMessageElement;
+    const editInput = msgElement.querySelector(".msg-edit-input");
+    const editActions = msgElement.querySelector(".msg-edit-actions");
+    
+    if (editInput) {
+        // Restore original text div
+        const parent = editInput.parentNode;
+        const textDiv = document.createElement("div");
+        textDiv.className = "msg-text";
+        
+        // Process mentions
+        let text = originalMessageText;
+        const mentionRegex = /@(\w+)/g;
+        text = text.replace(mentionRegex, (match, username) => {
+            if (username === currentUser.username) {
+                return `<span class="mention highlight">${match}</span>`;
+            }
+            return `<span class="mention">${match}</span>`;
+        });
+        
+        textDiv.innerHTML = text;
+        parent.replaceChild(textDiv, editInput);
+    }
+    
+    if (editActions) {
+        editActions.remove();
+    }
+    
+    editingMessageId = null;
+    editingMessageElement = null;
+    originalMessageText = null;
+}
+
+function saveEditMessage(messageId, newMessage, channelId, recipientId) {
+    if (!currentUser) return;
+    
+    const data = {
+        message_id: messageId,
+        new_message: newMessage,
+        user_id: currentUser.id,
+        channel_id: channelId || null,
+        recipient_id: recipientId || null
+    };
+    
+    socket.emit("edit_message", data);
+    
+    editingMessageId = null;
+    editingMessageElement = null;
+    originalMessageText = null;
+}
+
+function deleteMessage(messageId, channelId, recipientId) {
+    if (!currentUser) return;
+    
+    if (!confirm("Êtes-vous sûr de vouloir supprimer ce message ?")) {
+        return;
+    }
+    
+    const data = {
+        message_id: messageId,
+        user_id: currentUser.id,
+        channel_id: channelId || null,
+        recipient_id: recipientId || null
+    };
+    
+    socket.emit("delete_message", data);
+}
+
+// Listen for message edit events
+socket.on("message_edited", (data) => {
+    const msgElement = document.getElementById(`msg-${data.id}`);
+    if (msgElement) {
+        const textDiv = msgElement.querySelector(".msg-text");
+        const editInput = msgElement.querySelector(".msg-edit-input");
+        const editActions = msgElement.querySelector(".msg-edit-actions");
+        
+        if (editInput) {
+            // Remove edit UI
+            const parent = editInput.parentNode;
+            const newTextDiv = document.createElement("div");
+            newTextDiv.className = "msg-text";
+            
+            // Process mentions
+            let text = data.message;
+            const mentionRegex = /@(\w+)/g;
+            text = text.replace(mentionRegex, (match, username) => {
+                if (username === currentUser.username) {
+                    return `<span class="mention highlight">${match}</span>`;
+                }
+                return `<span class="mention">${match}</span>`;
+            });
+            
+            newTextDiv.innerHTML = text;
+            
+            // Add edited indicator
+            const editedSpan = document.createElement("span");
+            editedSpan.className = "msg-edited";
+            editedSpan.textContent = " (modifié)";
+            editedSpan.title = data.edited_at ? `Modifié le ${new Date(data.edited_at).toLocaleString("fr-FR")}` : "Modifié";
+            newTextDiv.appendChild(editedSpan);
+            
+            parent.replaceChild(newTextDiv, editInput);
+        } else if (textDiv) {
+            // Update existing message
+            let text = data.message;
+            const mentionRegex = /@(\w+)/g;
+            text = text.replace(mentionRegex, (match, username) => {
+                if (username === currentUser.username) {
+                    return `<span class="mention highlight">${match}</span>`;
+                }
+                return `<span class="mention">${match}</span>`;
+            });
+            
+            // Remove existing edited indicator
+            const existingEdited = textDiv.querySelector(".msg-edited");
+            if (existingEdited) {
+                existingEdited.remove();
+            }
+            
+            textDiv.innerHTML = text;
+            
+            // Add edited indicator
+            const editedSpan = document.createElement("span");
+            editedSpan.className = "msg-edited";
+            editedSpan.textContent = " (modifié)";
+            editedSpan.title = data.edited_at ? `Modifié le ${new Date(data.edited_at).toLocaleString("fr-FR")}` : "Modifié";
+            textDiv.appendChild(editedSpan);
+        }
+        
+        if (editActions) {
+            editActions.remove();
+        }
+    }
+});
+
+// Listen for message delete events
+socket.on("message_deleted", (data) => {
+    const msgElement = document.getElementById(`msg-${data.id}`);
+    if (msgElement) {
+        const textDiv = msgElement.querySelector(".msg-text");
+        if (textDiv) {
+            textDiv.className = "msg-text deleted";
+            textDiv.innerHTML = '<em style="opacity: 0.6; font-style: italic;">Ce message a été supprimé</em>';
+        }
+        
+        // Hide action buttons
+        const actionsDiv = msgElement.querySelector(".msg-actions");
+        if (actionsDiv) {
+            actionsDiv.style.display = "none";
+        }
+    }
+});
+
+socket.on("edit_message_error", (data) => {
+    alert(data.error || "Erreur lors de la modification du message");
+    cancelEditMessage();
+});
+
+socket.on("delete_message_error", (data) => {
+    alert(data.error || "Erreur lors de la suppression du message");
+});
+
 async function uploadFiles(files) {
+    // Validate all files before upload
+    const validationErrors = [];
+    for (const file of files) {
+        const validation = validateFile(file);
+        if (!validation.valid) {
+            validationErrors.push(...validation.errors);
+        }
+    }
+    
+    if (validationErrors.length > 0) {
+        throw new Error("Erreurs de validation:\n" + validationErrors.join("\n"));
+    }
+    
+    // Check total number of files
+    if (files.length > MAX_FILES_PER_UPLOAD) {
+        throw new Error(`Vous ne pouvez pas uploader plus de ${MAX_FILES_PER_UPLOAD} fichiers à la fois`);
+    }
+    
     const uploadPromises = [];
     
     for (const file of files) {
-        if (file.size > MAX_FILE_SIZE) {
-            throw new Error(`Le fichier "${file.name}" dépasse la taille maximale de 50MB`);
-        }
-
         const formData = new FormData();
         formData.append("file", file);
 
@@ -1008,17 +1764,25 @@ if (btnClearFiles) {
 function handleFileSelection(files) {
     const validFiles = [];
     const errors = [];
+    
+    // Check total number of files
+    const totalFiles = selectedFiles.length + files.length;
+    if (totalFiles > MAX_FILES_PER_UPLOAD) {
+        alert(`Vous ne pouvez pas sélectionner plus de ${MAX_FILES_PER_UPLOAD} fichiers à la fois`);
+        return;
+    }
 
     files.forEach(file => {
-        if (file.size > MAX_FILE_SIZE) {
-            errors.push(`"${file.name}" dépasse 50MB`);
-        } else {
+        const validation = validateFile(file);
+        if (validation.valid) {
             validFiles.push(file);
+        } else {
+            errors.push(...validation.errors);
         }
     });
 
     if (errors.length > 0) {
-        alert("Erreurs:\n" + errors.join("\n"));
+        alert("Erreurs de validation:\n" + errors.join("\n"));
     }
 
     if (validFiles.length > 0) {
@@ -1063,7 +1827,12 @@ function renderFilePreviews() {
                 <div class="file-preview-name">${file.name}</div>
                 <div class="file-preview-size">${size}</div>
             </div>
-            <button class="file-preview-remove" data-index="${index}">✕</button>
+            <button class="file-preview-remove" data-index="${index}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
         `;
 
         const removeBtn = preview.querySelector(".file-preview-remove");
@@ -1082,10 +1851,171 @@ function clearSelectedFiles() {
     renderFilePreviews();
 }
 
+// Typing indicator state
+let typingTimeout = null;
+let isTyping = false;
+const TYPING_DELAY = 1000; // Emit typing event after 1 second of inactivity
+const TYPING_STOP_DELAY = 3000; // Stop typing indicator after 3 seconds
+
+// Typing indicator elements
+const typingIndicator = document.getElementById("typing-indicator");
+const typingContent = typingIndicator ? typingIndicator.querySelector(".typing-content") : null;
+
+// Track users who are typing
+const typingUsers = new Map();
+
+// Handle typing events
+function handleTyping() {
+    if (!currentUser) return;
+    
+    // Clear existing timeout
+    if (typingTimeout) {
+        clearTimeout(typingTimeout);
+    }
+    
+    // If not already typing, emit typing event
+    if (!isTyping) {
+        isTyping = true;
+        emitTyping();
+    }
+    
+    // Reset timeout to stop typing
+    typingTimeout = setTimeout(() => {
+        stopTyping();
+    }, TYPING_STOP_DELAY);
+}
+
+function emitTyping() {
+    if (!currentUser) return;
+    
+    const data = {
+        username: currentUser.username,
+        user_id: currentUser.id
+    };
+    
+    if (currentChannel) {
+        data.channel_id = currentChannel.id;
+        socket.emit("typing", data);
+    } else if (currentRecipient) {
+        data.recipient_id = currentRecipient.id;
+        socket.emit("typing", data);
+    }
+}
+
+function stopTyping() {
+    if (!isTyping || !currentUser) return;
+    
+    isTyping = false;
+    if (typingTimeout) {
+        clearTimeout(typingTimeout);
+        typingTimeout = null;
+    }
+    
+    const data = {
+        username: currentUser.username,
+        user_id: currentUser.id
+    };
+    
+    if (currentChannel) {
+        data.channel_id = currentChannel.id;
+        socket.emit("stop_typing", data);
+    } else if (currentRecipient) {
+        data.recipient_id = currentRecipient.id;
+        socket.emit("stop_typing", data);
+    }
+}
+
+// Listen for typing events from other users
+socket.on("user_typing", (data) => {
+    // Don't show typing indicator for current user
+    if (data.user_id === currentUser.id) return;
+    
+    // Check if we should display this typing indicator
+    let shouldDisplay = false;
+    
+    if (currentChannel && data.channel_id === currentChannel.id) {
+        shouldDisplay = true;
+    } else if (currentRecipient && (data.recipient_id === currentUser.id || data.recipient_id === currentRecipient.id)) {
+        shouldDisplay = true;
+    }
+    
+    if (shouldDisplay) {
+        // Add or update typing user
+        typingUsers.set(data.user_id, {
+            username: data.username,
+            timeout: setTimeout(() => {
+                typingUsers.delete(data.user_id);
+                updateTypingIndicator();
+            }, TYPING_STOP_DELAY)
+        });
+        
+        // Clear existing timeout if user was already typing
+        const existing = typingUsers.get(data.user_id);
+        if (existing && existing.timeout) {
+            clearTimeout(existing.timeout);
+            existing.timeout = setTimeout(() => {
+                typingUsers.delete(data.user_id);
+                updateTypingIndicator();
+            }, TYPING_STOP_DELAY);
+        }
+        
+        updateTypingIndicator();
+    }
+});
+
+socket.on("user_stopped_typing", (data) => {
+    if (data.user_id === currentUser.id) return;
+    
+    const user = typingUsers.get(data.user_id);
+    if (user && user.timeout) {
+        clearTimeout(user.timeout);
+    }
+    typingUsers.delete(data.user_id);
+    updateTypingIndicator();
+});
+
+function updateTypingIndicator() {
+    if (!typingIndicator || !typingContent) return;
+    
+    const users = Array.from(typingUsers.values());
+    
+    if (users.length === 0) {
+        typingIndicator.classList.add("hidden");
+        return;
+    }
+    
+    // Format like Discord: "username is typing..." or "user1 and user2 are typing..."
+    let text = "";
+    if (users.length === 1) {
+        text = `<strong>${users[0].username}</strong> tape`;
+    } else if (users.length === 2) {
+        text = `<strong>${users[0].username}</strong> et <strong>${users[1].username}</strong> tapent`;
+    } else {
+        text = `<strong>${users[0].username}</strong> et <strong>${users.length - 1} autre${users.length - 1 > 1 ? 's' : ''}</strong> tapent`;
+    }
+    
+    typingContent.innerHTML = text;
+    typingIndicator.classList.remove("hidden");
+}
+
+// Add typing event listeners to input
+msgInput.addEventListener("input", () => {
+    handleTyping();
+});
+
+msgInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+        stopTyping();
+    } else {
+        handleTyping();
+    }
+});
+
 btnSend.addEventListener("click", sendMessage);
 msgInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
+        stopTyping();
         sendMessage();
     }
 });
@@ -1658,12 +2588,14 @@ function renderChannels() {
         const div = document.createElement("div");
         div.className = `channel-item ${currentChannel && currentChannel.id === ch.id ? 'active' : ''}`;
 
-        const icon = ch.icon || "💬";
+        const icon = ch.icon || (ch.voice_channel ? "🔊" : "💬");
+        const isVoiceChannel = ch.voice_channel === 1;
 
         div.innerHTML = `
             <div class="channel-content">
                 <span class="channel-icon">${icon}</span>
                 <span>${ch.name}</span>
+                ${isVoiceChannel ? '<span class="voice-badge">Vocal</span>' : ''}
             </div>
         `;
 
@@ -1671,7 +2603,8 @@ function renderChannels() {
         if (ch.name !== 'Général' && ch.id != 1) {
             const settingsBtn = document.createElement("button");
             settingsBtn.className = "channel-settings-btn";
-            settingsBtn.innerHTML = "⋮";
+            const moreIcon = Icons.get("moreVertical", 16);
+            if (moreIcon) settingsBtn.appendChild(moreIcon);
             settingsBtn.title = "Options";
             settingsBtn.onclick = (e) => {
                 e.stopPropagation();
@@ -1683,7 +2616,17 @@ function renderChannels() {
         }
 
         div.onclick = () => {
-            joinChannel(ch);
+            if (ch.voice_channel === 1) {
+                // Voice channel - join voice instead
+                if (typeof joinVoiceChannel === 'function') {
+                    joinVoiceChannel(ch);
+                } else {
+                    alert('Fonctionnalité vocale en cours de chargement...');
+                }
+            } else {
+                // Text channel
+                joinChannel(ch);
+            }
             if (window.innerWidth <= 768) sidebar.classList.remove("open");
         };
         channelsList.appendChild(div);
@@ -1748,7 +2691,12 @@ btnCreateChannel.addEventListener("click", () => {
     header.className = "modal-header";
     header.innerHTML = `
         <h3>Créer un salon</h3>
-        <button class="icon-btn" id="close-modal">✕</button>
+        <button class="icon-btn" id="close-modal">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
     `;
 
     // Body
@@ -1766,6 +2714,11 @@ btnCreateChannel.addEventListener("click", () => {
                 <!-- Emoji picker will be injected here -->
             </div>
         </div>
+        
+        <label class="modal-label" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
+            <input type="checkbox" id="voice-channel-checkbox" style="width: auto;">
+            <span>Canal vocal</span>
+        </label>
 
         <div class="modal-actions">
             <button class="modal-btn secondary" id="cancel-btn">Annuler</button>
@@ -1814,9 +2767,15 @@ btnCreateChannel.addEventListener("click", () => {
 
     const createChannel = () => {
         const name = nameInput.value.trim();
+        const voiceChannelCheckbox = body.querySelector("#voice-channel-checkbox");
+        const isVoiceChannel = voiceChannelCheckbox ? voiceChannelCheckbox.checked : false;
 
         if (name) {
-            socket.emit("create_channel", { name, icon: selectedEmoji });
+            socket.emit("create_channel", { 
+                name, 
+                icon: isVoiceChannel ? "🔊" : selectedEmoji,
+                voice_channel: isVoiceChannel
+            });
             closeModal();
         } else {
             nameInput.style.borderColor = "red";
@@ -1862,7 +2821,12 @@ btnNewDm.addEventListener("click", async () => {
         header.className = "modal-header";
         header.innerHTML = `
             <h3>Nouveau Message</h3>
-            <button class="icon-btn" id="close-modal">✕</button>
+            <button class="icon-btn" id="close-modal">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
         `;
 
         // Body
@@ -2135,10 +3099,27 @@ function joinChannel(channel) {
     currentRecipient = null; // Clear DM
     renderChannels();
     renderUsers();
+    
+    // Clear typing indicator when switching channels
+    typingUsers.clear();
+    updateTypingIndicator();
+    stopTyping();
 
     chatChannelName.textContent = `# ${channel.name}`;
     chatChannelDesc.textContent = channel.description;
     messagesContainer.innerHTML = ""; // Clear messages
+    allMessages = []; // Clear search messages
+    oldestMessageId = null;
+    hasMoreMessages = true;
+    isLoadingMore = false;
+    // Remove scroll listener
+    if (messagesContainer._scrollListener) {
+        messagesContainer.removeEventListener("scroll", messagesContainer._scrollListener);
+        messagesContainer._scrollListener = null;
+    }
+    if (typeof closeSearch === 'function') {
+        closeSearch(); // Close search when switching channels
+    }
 
     // Header Settings Button Logic
     if (btnHeaderChannelSettings) {
@@ -2169,10 +3150,27 @@ function startDM(user) {
     currentRecipient = user;
     renderChannels();
     renderUsers();
+    
+    // Clear typing indicator when switching to DM
+    typingUsers.clear();
+    updateTypingIndicator();
+    stopTyping();
 
     chatChannelName.textContent = `@ ${user.username}`;
     chatChannelDesc.textContent = "Message privé";
     messagesContainer.innerHTML = "";
+    allMessages = []; // Clear search messages
+    oldestMessageId = null;
+    hasMoreMessages = true;
+    isLoadingMore = false;
+    // Remove scroll listener
+    if (messagesContainer._scrollListener) {
+        messagesContainer.removeEventListener("scroll", messagesContainer._scrollListener);
+        messagesContainer._scrollListener = null;
+    }
+    if (typeof closeSearch === 'function') {
+        closeSearch(); // Close search when switching to DM
+    }
 
     // Hide channel members section for DMs
     if (channelMembersHeader && channelMembersList) {
@@ -2185,4 +3183,1190 @@ function startDM(user) {
     }
 
     socket.emit("join_dm", { myId: currentUser.id, otherId: user.id });
+}
+
+// --- SEARCH FUNCTIONALITY ---
+
+// Search state
+let searchResults = [];
+let currentSearchIndex = -1;
+let isSearchActive = false;
+
+// Initialize search
+if (btnSearch && searchPanel) {
+    btnSearch.addEventListener("click", () => {
+        searchPanel.classList.remove("hidden");
+        if (searchInput) searchInput.focus();
+        isSearchActive = true;
+    });
+}
+
+if (btnCloseSearch) {
+    btnCloseSearch.addEventListener("click", () => {
+        closeSearch();
+    });
+}
+
+// Close search with Escape key
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && searchPanel && !searchPanel.classList.contains("hidden")) {
+        closeSearch();
+    }
+});
+
+function closeSearch() {
+    if (!searchPanel) return;
+    searchPanel.classList.add("hidden");
+    if (searchInput) searchInput.value = "";
+    if (searchFilterUser) searchFilterUser.value = "";
+    if (searchFilterDate) searchFilterDate.value = "";
+    clearSearchResults();
+    isSearchActive = false;
+}
+
+// Update user filter dropdown
+function updateSearchUserFilter() {
+    if (!searchFilterUser) return;
+    
+    // Get unique users from messages
+    const userMap = new Map();
+    allMessages.forEach(msg => {
+        if (msg.username && msg.sender_id) {
+            if (!userMap.has(msg.sender_id)) {
+                userMap.set(msg.sender_id, msg.username);
+            }
+        }
+    });
+    
+    // Clear existing options except "Tous les utilisateurs"
+    searchFilterUser.innerHTML = '<option value="">Tous les utilisateurs</option>';
+    
+    // Add user options
+    userMap.forEach((username, userId) => {
+        const option = document.createElement("option");
+        option.value = userId;
+        option.textContent = username;
+        searchFilterUser.appendChild(option);
+    });
+}
+
+// Search functionality
+if (searchInput) {
+    searchInput.addEventListener("input", () => {
+        performSearch();
+    });
+}
+
+if (searchFilterUser) {
+    searchFilterUser.addEventListener("change", () => {
+        performSearch();
+    });
+}
+
+if (searchFilterDate) {
+    searchFilterDate.addEventListener("change", () => {
+        performSearch();
+    });
+}
+
+// Navigation buttons
+if (btnSearchPrev) {
+    btnSearchPrev.addEventListener("click", () => {
+        navigateSearch(-1);
+    });
+}
+
+if (btnSearchNext) {
+    btnSearchNext.addEventListener("click", () => {
+        navigateSearch(1);
+    });
+}
+
+function performSearch() {
+    if (!searchInput || !allMessages) return;
+    
+    const query = searchInput.value.trim().toLowerCase();
+    const selectedUserId = searchFilterUser ? searchFilterUser.value : "";
+    const selectedDate = searchFilterDate ? searchFilterDate.value : "";
+    
+    // Clear previous highlights
+    clearSearchHighlights();
+    
+    if (!query && !selectedUserId && !selectedDate) {
+        clearSearchResults();
+        return;
+    }
+    
+    // Filter messages
+    searchResults = allMessages.filter(msg => {
+        // Filter by user
+        if (selectedUserId && String(msg.sender_id) !== selectedUserId) {
+            return false;
+        }
+        
+        // Filter by date
+        if (selectedDate) {
+            const msgDate = new Date(msg.date);
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const weekAgo = new Date(today);
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            const monthAgo = new Date(today);
+            monthAgo.setMonth(monthAgo.getMonth() - 1);
+            
+            switch (selectedDate) {
+                case "today":
+                    if (msgDate < today) return false;
+                    break;
+                case "yesterday":
+                    if (msgDate < yesterday || msgDate >= today) return false;
+                    break;
+                case "week":
+                    if (msgDate < weekAgo) return false;
+                    break;
+                case "month":
+                    if (msgDate < monthAgo) return false;
+                    break;
+            }
+        }
+        
+        // Filter by content
+        if (query) {
+            const messageText = (msg.message || "").toLowerCase();
+            const username = (msg.username || "").toLowerCase();
+            const fileName = (msg.file_name || "").toLowerCase();
+            
+            if (!messageText.includes(query) && 
+                !username.includes(query) && 
+                !fileName.includes(query)) {
+                return false;
+            }
+        }
+        
+        return true;
+    });
+    
+    // Update results count
+    if (searchResultsCount) {
+        const count = searchResults.length;
+        searchResultsCount.textContent = `${count} résultat${count > 1 ? 's' : ''}`;
+    }
+    
+    // Enable/disable navigation buttons
+    if (btnSearchPrev && btnSearchNext) {
+        btnSearchPrev.disabled = searchResults.length === 0;
+        btnSearchNext.disabled = searchResults.length === 0;
+    }
+    
+    // Highlight results
+    highlightSearchResults(query);
+    
+    // Navigate to first result
+    if (searchResults.length > 0) {
+        currentSearchIndex = 0;
+        navigateToSearchResult(0);
+    } else {
+        currentSearchIndex = -1;
+    }
+}
+
+function highlightSearchResults(query) {
+    if (!query) return;
+    
+    const queryLower = query.toLowerCase();
+    const messageElements = messagesContainer.querySelectorAll(".msg");
+    
+    messageElements.forEach(msgEl => {
+        const msgId = msgEl.id.replace("msg-", "");
+        const message = allMessages.find(m => String(m.id) === msgId);
+        
+        if (message && searchResults.some(r => String(r.id) === msgId)) {
+            // Highlight this message
+            msgEl.classList.add("search-result");
+            
+            // Highlight text in message
+            const textDiv = msgEl.querySelector(".msg-text");
+            if (textDiv && message.message) {
+                const originalText = message.message;
+                const highlightedText = originalText.replace(
+                    new RegExp(`(${escapeRegex(query)})`, "gi"),
+                    '<mark class="search-highlight">$1</mark>'
+                );
+                textDiv.innerHTML = highlightedText;
+            }
+        } else {
+            msgEl.classList.remove("search-result");
+        }
+    });
+}
+
+function clearSearchHighlights() {
+    const messageElements = messagesContainer.querySelectorAll(".msg");
+    messageElements.forEach(msgEl => {
+        msgEl.classList.remove("search-result");
+        const textDiv = msgEl.querySelector(".msg-text");
+        if (textDiv) {
+            // Restore original text with mentions
+            const msgId = msgEl.id.replace("msg-", "");
+            const message = allMessages.find(m => String(m.id) === msgId);
+            if (message && message.message) {
+                let text = message.message;
+                const mentionRegex = /@(\w+)/g;
+                text = text.replace(mentionRegex, (match, username) => {
+                    if (username === currentUser.username) {
+                        return `<span class="mention highlight">${match}</span>`;
+                    }
+                    return `<span class="mention">${match}</span>`;
+                });
+                textDiv.innerHTML = text;
+                
+                // Add edited indicator if needed
+                if (message.edited) {
+                    const editedSpan = document.createElement("span");
+                    editedSpan.className = "msg-edited";
+                    editedSpan.textContent = " (modifié)";
+                    textDiv.appendChild(editedSpan);
+                }
+            }
+        }
+    });
+}
+
+function clearSearchResults() {
+    searchResults = [];
+    currentSearchIndex = -1;
+    if (searchResultsCount) {
+        searchResultsCount.textContent = "0 résultat";
+    }
+    if (btnSearchPrev && btnSearchNext) {
+        btnSearchPrev.disabled = true;
+        btnSearchNext.disabled = true;
+    }
+    clearSearchHighlights();
+}
+
+function navigateSearch(direction) {
+    if (searchResults.length === 0) return;
+    
+    currentSearchIndex += direction;
+    
+    if (currentSearchIndex < 0) {
+        currentSearchIndex = searchResults.length - 1;
+    } else if (currentSearchIndex >= searchResults.length) {
+        currentSearchIndex = 0;
+    }
+    
+    navigateToSearchResult(currentSearchIndex);
+}
+
+function navigateToSearchResult(index) {
+    if (index < 0 || index >= searchResults.length) return;
+    
+    const result = searchResults[index];
+    const msgElement = document.getElementById(`msg-${result.id}`);
+    
+    if (msgElement) {
+        // Scroll to message
+        msgElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        
+        // Highlight temporarily
+        msgElement.classList.add("search-result-active");
+        setTimeout(() => {
+            msgElement.classList.remove("search-result-active");
+        }, 2000);
+        
+        // Update navigation info
+        if (searchResultsCount) {
+            searchResultsCount.textContent = `${index + 1} / ${searchResults.length}`;
+        }
+    }
+}
+
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// --- THEME MANAGEMENT ---
+
+// Initialize theme from localStorage or system preference
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+    setTheme(theme);
+}
+
+function setTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+    
+    // Update icons
+    if (themeIconSun && themeIconMoon) {
+        if (theme === 'dark') {
+            themeIconSun.classList.add('hidden');
+            themeIconMoon.classList.remove('hidden');
+        } else {
+            themeIconSun.classList.remove('hidden');
+            themeIconMoon.classList.add('hidden');
+        }
+    }
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+}
+
+// Initialize theme on load
+if (btnThemeToggle) {
+    btnThemeToggle.addEventListener('click', toggleTheme);
+    initTheme();
+}
+
+// --- NOTIFICATIONS ---
+
+let notificationPermission = Notification.permission;
+let notificationSound = null;
+
+// Request notification permission
+function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+            notificationPermission = permission;
+        });
+    }
+}
+
+// Create notification sound
+function createNotificationSound() {
+    if (!notificationSound) {
+        notificationSound = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OSdTQ8OUKjj8LZjHAY4kdfyzHksBSR3x/DdkEAKFF606euoVRQKRp/g8r5sIQUrgc7y2Yk2CBtpvfDknU0PDlCo4/C2YxwGOJHX8sx5LAUkd8fw3ZBAC');
+        notificationSound.volume = 0.5;
+    }
+    return notificationSound;
+}
+
+// Send browser notification
+function sendNotification(title, body, icon = null) {
+    if (!('Notification' in window)) return;
+    
+    if (notificationPermission === 'granted') {
+        const notification = new Notification(title, {
+            body: body,
+            icon: icon || '/favicon.ico',
+            badge: '/favicon.ico',
+            tag: 'chat-notification',
+            requireInteraction: false
+        });
+        
+        // Play sound
+        const sound = createNotificationSound();
+        if (sound) {
+            sound.play().catch(e => console.log('Could not play notification sound:', e));
+        }
+        
+        // Update badge if supported
+        if ('setAppBadge' in navigator) {
+            navigator.setAppBadge().catch(e => console.log('Could not set badge:', e));
+        }
+        
+        // Auto close after 5 seconds
+        setTimeout(() => {
+            notification.close();
+        }, 5000);
+        
+        // Handle click
+        notification.onclick = () => {
+            window.focus();
+            notification.close();
+        };
+    }
+}
+
+// Clear badge
+function clearNotificationBadge() {
+    if ('clearAppBadge' in navigator) {
+        navigator.clearAppBadge().catch(e => console.log('Could not clear badge:', e));
+    }
+}
+
+// Request permission on page load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', requestNotificationPermission);
+} else {
+    requestNotificationPermission();
+}
+
+// Clear badge when page becomes visible
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        clearNotificationBadge();
+    }
+});
+
+// --- USER STATUS MANAGEMENT ---
+
+// Update user status
+function updateUserStatus(status) {
+    if (!currentUser) return;
+    
+    // Get token from localStorage or currentUser
+    const token = localStorage.getItem('chat_token') || (currentUser && currentUser.token);
+    
+    if (!token) {
+        console.error('No token available');
+        return;
+    }
+    
+    fetch(`${API_BASE_URL}/api/user/status`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status })
+    }).then(res => res.json())
+    .then(data => {
+        if (data.status) {
+            currentUser.status = status;
+            socket.emit('user_status_update', { userId: currentUser.id, status });
+        }
+    }).catch(err => console.error('Error updating status:', err));
+}
+
+// Show status selector
+function showStatusSelector() {
+    const statuses = [
+        { value: 'online', label: 'En ligne', color: '#10b981' },
+        { value: 'away', label: 'Absent', color: '#f59e0b' },
+        { value: 'dnd', label: 'Ne pas déranger', color: '#ef4444' },
+        { value: 'offline', label: 'Hors ligne', color: '#6b7280' }
+    ];
+    
+    // Create status menu
+    const menu = document.createElement('div');
+    menu.className = 'status-menu';
+    menu.innerHTML = statuses.map(s => `
+        <div class="status-option" data-status="${s.value}">
+            <div class="status-indicator ${s.value}" style="background-color: ${s.color}"></div>
+            <span>${s.label}</span>
+        </div>
+    `).join('');
+    
+    // Add click handlers
+    menu.querySelectorAll('.status-option').forEach(option => {
+        option.addEventListener('click', () => {
+            const status = option.dataset.status;
+            updateUserStatus(status);
+            menu.remove();
+        });
+    });
+    
+    // Position and show menu
+    const userProfile = document.querySelector('.user-profile');
+    if (userProfile) {
+        const rect = userProfile.getBoundingClientRect();
+        menu.style.position = 'fixed';
+        menu.style.top = `${rect.bottom + 5}px`;
+        menu.style.left = `${rect.left}px`;
+        menu.style.zIndex = '1000';
+        document.body.appendChild(menu);
+        
+        // Close on outside click
+        setTimeout(() => {
+            document.addEventListener('click', function closeMenu(e) {
+                if (!menu.contains(e.target) && !userProfile.contains(e.target)) {
+                    menu.remove();
+                    document.removeEventListener('click', closeMenu);
+                }
+            });
+        }, 0);
+    }
+}
+
+// --- PINNED MESSAGES ---
+
+// Toggle pinned messages panel
+if (btnPinnedMessages) {
+    btnPinnedMessages.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!pinnedMessagesPanel) {
+            console.error('Pinned messages panel not found');
+            return;
+        }
+        pinnedMessagesPanel.classList.toggle('hidden');
+        if (!pinnedMessagesPanel.classList.contains('hidden')) {
+            loadPinnedMessages();
+        }
+    });
+} else {
+    console.error('btn-pinned-messages button not found');
+}
+
+if (btnClosePinned) {
+    btnClosePinned.addEventListener('click', () => {
+        pinnedMessagesPanel.classList.add('hidden');
+    });
+}
+
+// Load pinned messages
+function loadPinnedMessages() {
+    if (!currentChannel && !currentRecipient) {
+        console.log('No channel or recipient selected');
+        return;
+    }
+    
+    if (!currentUser) {
+        console.error('No current user');
+        return;
+    }
+    
+    const context = currentChannel 
+        ? { channelId: currentChannel.id } 
+        : { recipientId: currentRecipient.id, myId: currentUser.id };
+    
+    console.log('Loading pinned messages with context:', context);
+    socket.emit('get_pinned_messages', context);
+}
+
+// Display pinned message
+function displayPinnedMessage(msg) {
+    const div = document.createElement('div');
+    div.className = 'pinned-message-item';
+    div.innerHTML = `
+        <div class="pinned-message-header">
+            <span class="pinned-message-author">${msg.username}</span>
+            <span class="pinned-message-date">${new Date(msg.date).toLocaleDateString()}</span>
+        </div>
+        <div class="pinned-message-content">${msg.message || '[Fichier]'}</div>
+        <button class="pinned-message-jump" data-msg-id="${msg.id}">Aller au message</button>
+    `;
+    
+    div.querySelector('.pinned-message-jump').addEventListener('click', () => {
+        const msgElement = document.getElementById(`msg-${msg.id}`);
+        if (msgElement) {
+            msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            msgElement.classList.add('highlight-message');
+            setTimeout(() => {
+                msgElement.classList.remove('highlight-message');
+            }, 2000);
+        }
+        pinnedMessagesPanel.classList.add('hidden');
+    });
+    
+    return div;
+}
+
+// Socket events for status and pinned messages
+socket.on('user_status_updated', (data) => {
+    // Update status in UI
+    const userElements = document.querySelectorAll(`[data-user-id="${data.userId}"]`);
+    userElements.forEach(el => {
+        const statusIndicator = el.querySelector('.status-indicator');
+        if (statusIndicator) {
+            statusIndicator.className = `status-indicator ${data.status}`;
+        }
+    });
+    
+    // Update in users list
+    const user = users.find(u => u.id === data.userId);
+    if (user) {
+        user.status = data.status;
+        renderUsers();
+    }
+});
+
+// Toggle pin message
+function togglePinMessage(messageId, isPinned) {
+    const endpoint = isPinned ? '/api/messages/unpin' : '/api/messages/pin';
+    
+    // Get token from localStorage or currentUser
+    const token = localStorage.getItem('chat_token') || (currentUser && currentUser.token);
+    
+    if (!token) {
+        alert('Vous devez être connecté pour épingler un message');
+        return;
+    }
+    
+    fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ messageId })
+    }).then(res => {
+        if (!res.ok) {
+            return res.json().then(err => {
+                throw new Error(err.error || 'Erreur lors de l\'épinglage');
+            });
+        }
+        return res.json();
+    })
+    .then(data => {
+        if (data.success) {
+            // Update message in allMessages array
+            const messageIndex = allMessages.findIndex(m => m.id === messageId);
+            if (messageIndex !== -1) {
+                allMessages[messageIndex].pinned = !isPinned;
+            }
+            
+            // Update message in UI
+            const msgElement = document.getElementById(`msg-${messageId}`);
+            if (msgElement) {
+                const pinIndicator = msgElement.querySelector('.msg-pinned-indicator');
+                // Find the pin button specifically using data attribute
+                const actionsDiv = msgElement.querySelector('.msg-actions');
+                const pinBtn = actionsDiv ? actionsDiv.querySelector('button[data-pin-btn="true"]') : null;
+                
+                if (isPinned) {
+                    // Unpinning: remove indicator, update button
+                    if (pinIndicator) pinIndicator.remove();
+                    if (pinBtn) {
+                        pinBtn.innerHTML = `
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="6" y1="3" x2="6" y2="15"></line>
+                                <circle cx="18" cy="6" r="3"></circle>
+                                <circle cx="6" cy="18" r="3"></circle>
+                                <path d="M18 9a9 9 0 0 1-9 9"></path>
+                            </svg>
+                        `;
+                        pinBtn.title = "Épingler";
+                    }
+                } else {
+                    // Pinning: add indicator, update button
+                    const content = msgElement.querySelector('.msg-content');
+                    if (content && !pinIndicator) {
+                        const newPinIndicator = document.createElement("div");
+                        newPinIndicator.className = "msg-pinned-indicator";
+                        newPinIndicator.innerHTML = `
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="6" y1="3" x2="6" y2="15"></line>
+                                <circle cx="18" cy="6" r="3"></circle>
+                                <circle cx="6" cy="18" r="3"></circle>
+                                <path d="M18 9a9 9 0 0 1-9 9"></path>
+                            </svg>
+                            Épinglé
+                        `;
+                        content.insertBefore(newPinIndicator, content.firstChild);
+                    }
+                    if (pinBtn) {
+                        pinBtn.innerHTML = `
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="6" y1="3" x2="6" y2="15"></line>
+                                <circle cx="18" cy="6" r="3"></circle>
+                                <circle cx="6" cy="18" r="3"></circle>
+                                <path d="M18 9a9 9 0 0 1-9 9"></path>
+                            </svg>
+                        `;
+                        pinBtn.title = "Désépingler";
+                    }
+                }
+            }
+            
+            // Reload pinned messages if panel is open
+            if (pinnedMessagesPanel && !pinnedMessagesPanel.classList.contains('hidden')) {
+                loadPinnedMessages();
+            }
+        }
+    }).catch(err => {
+        console.error('Error toggling pin:', err);
+        alert('Erreur: ' + err.message);
+    });
+}
+
+socket.on('pinned_messages', (messages) => {
+    console.log('Received pinned messages:', messages);
+    if (!pinnedMessagesList) {
+        console.error('pinned-messages-list element not found');
+        return;
+    }
+    
+    pinnedMessagesList.innerHTML = '';
+    
+    if (!messages || messages.length === 0) {
+        pinnedMessagesList.innerHTML = '<div class="no-pinned-messages">Aucun message épinglé</div>';
+        return;
+    }
+    
+    messages.forEach(msg => {
+        pinnedMessagesList.appendChild(displayPinnedMessage(msg));
+    });
+});
+
+socket.on('message_pinned', (data) => {
+    const msgElement = document.getElementById(`msg-${data.messageId}`);
+    if (msgElement) {
+        // Reload message or update UI
+        if (data.pinned) {
+            // Message was pinned - add indicator
+            const content = msgElement.querySelector('.msg-content');
+            if (content && !content.querySelector('.msg-pinned-indicator')) {
+                const pinIndicator = document.createElement("div");
+                pinIndicator.className = "msg-pinned-indicator";
+                pinIndicator.innerHTML = `
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="6" y1="3" x2="6" y2="15"></line>
+                        <circle cx="18" cy="6" r="3"></circle>
+                        <circle cx="6" cy="18" r="3"></circle>
+                        <path d="M18 9a9 9 0 0 1-9 9"></path>
+                    </svg>
+                    Épinglé
+                `;
+                content.insertBefore(pinIndicator, content.firstChild);
+            }
+        } else {
+            // Message was unpinned - remove indicator
+            const pinIndicator = msgElement.querySelector('.msg-pinned-indicator');
+            if (pinIndicator) pinIndicator.remove();
+        }
+    }
+    
+    // Reload pinned messages if panel is open
+    if (pinnedMessagesPanel && !pinnedMessagesPanel.classList.contains('hidden')) {
+        loadPinnedMessages();
+    }
+});
+
+// Update status on page visibility change
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        updateUserStatus('away');
+    } else {
+        updateUserStatus('online');
+    }
+});
+
+// Update status on page unload
+window.addEventListener('beforeunload', () => {
+    updateUserStatus('offline');
+    if (isInVoiceChannel) {
+        leaveVoiceChannel();
+    }
+});
+
+// --- VOICE CHANNEL MANAGEMENT ---
+
+let currentVoiceChannel = null;
+let voiceSendTransport = null;
+let voiceRecvTransport = null;
+let voiceProducer = null;
+let voiceConsumers = new Map();
+let mediasoupDevice = null;
+let isInVoiceChannel = false;
+let voiceParticipants = new Map();
+
+// Wait for mediasoup client to be available
+function waitForMediasoup() {
+    return new Promise((resolve, reject) => {
+        if (window.mediasoupClient) {
+            resolve(window.mediasoupClient);
+            return;
+        }
+        
+        let attempts = 0;
+        const maxAttempts = 100; // 10 seconds max
+        
+        const checkInterval = setInterval(() => {
+            attempts++;
+            if (window.mediasoupClient) {
+                clearInterval(checkInterval);
+                resolve(window.mediasoupClient);
+            } else if (attempts >= maxAttempts) {
+                clearInterval(checkInterval);
+                reject(new Error('Mediasoup client failed to load. Please refresh the page.'));
+            }
+        }, 100);
+    });
+}
+
+// Join voice channel
+async function joinVoiceChannel(channel) {
+    console.log('joinVoiceChannel called with:', channel);
+    
+    if (!currentUser) {
+        alert('Vous devez être connecté pour rejoindre un canal vocal');
+        return;
+    }
+    
+    if (isInVoiceChannel) {
+        if (confirm('Vous êtes déjà dans un canal vocal. Voulez-vous le quitter ?')) {
+            await leaveVoiceChannel();
+        } else {
+            return;
+        }
+    }
+    
+    try {
+        currentVoiceChannel = channel;
+        const roomId = `channel_${channel.id}`;
+        console.log('Joining voice room:', roomId);
+        
+        // Wait for mediasoup client
+        console.log('Waiting for mediasoup client...');
+        const mediasoupClient = await waitForMediasoup();
+        console.log('Mediasoup client loaded:', mediasoupClient);
+        
+        // Get router RTP capabilities
+        console.log('Requesting router RTP capabilities...');
+        const rtpCapabilities = await new Promise((resolve, reject) => {
+            socket.emit('getRouterRtpCapabilities', { roomId }, (response) => {
+                console.log('Router RTP capabilities response:', response);
+                if (response.error) {
+                    reject(new Error(response.error));
+                } else {
+                    resolve(response.rtpCapabilities);
+                }
+            });
+        });
+        console.log('Got RTP capabilities');
+        
+        // Load device with router capabilities
+        mediasoupDevice = new mediasoupClient.Device();
+        await mediasoupDevice.load({ routerRtpCapabilities: rtpCapabilities });
+        
+        // Create send transport
+        const sendTransportData = await new Promise((resolve, reject) => {
+            socket.emit('createTransport', { roomId, userId: currentUser.id }, (response) => {
+                if (response.error) {
+                    reject(new Error(response.error));
+                } else {
+                    resolve(response.transportData);
+                }
+            });
+        });
+        
+        voiceSendTransport = mediasoupDevice.createSendTransport(sendTransportData);
+        
+        voiceSendTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
+            try {
+                socket.emit('connectTransport', { roomId, transportId: voiceSendTransport.id, dtlsParameters }, (response) => {
+                    if (response.error) {
+                        errback(new Error(response.error));
+                    } else {
+                        callback();
+                    }
+                });
+            } catch (error) {
+                errback(error);
+            }
+        });
+        
+        voiceSendTransport.on('produce', async (parameters, callback, errback) => {
+            try {
+                socket.emit('produce', {
+                    roomId,
+                    transportId: voiceSendTransport.id,
+                    rtpParameters: parameters.rtpParameters,
+                    userId: currentUser.id,
+                }, (response) => {
+                    if (response.error) {
+                        errback(new Error(response.error));
+                    } else {
+                        callback({ id: response.id });
+                        voiceProducer = response.id;
+                        
+                        // Create consumers for existing participants
+                        if (response.newConsumers && response.newConsumers.length > 0) {
+                            response.newConsumers.forEach(consumerData => {
+                                createConsumer(consumerData, roomId);
+                            });
+                        }
+                    }
+                });
+            } catch (error) {
+                errback(error);
+            }
+        });
+        
+        // Get user media (microphone)
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: 48000,
+                channelCount: 2
+            } 
+        });
+        const track = stream.getAudioTracks()[0];
+        
+        // Produce audio
+        const producer = await voiceSendTransport.produce({ track });
+        voiceProducer = producer.id;
+        
+        // Create recv transport for receiving audio
+        const recvTransportData = await new Promise((resolve, reject) => {
+            socket.emit('createTransport', { roomId, userId: currentUser.id }, (response) => {
+                if (response.error) {
+                    reject(new Error(response.error));
+                } else {
+                    resolve(response.transportData);
+                }
+            });
+        });
+        
+        voiceRecvTransport = mediasoupDevice.createRecvTransport(recvTransportData);
+        
+        voiceRecvTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
+            try {
+                socket.emit('connectTransport', { roomId, transportId: voiceRecvTransport.id, dtlsParameters }, (response) => {
+                    if (response.error) {
+                        errback(new Error(response.error));
+                    } else {
+                        callback();
+                    }
+                });
+            } catch (error) {
+                errback(error);
+            }
+        });
+        
+        // Get existing consumers
+        socket.emit('createConsumers', { roomId, transportId: voiceRecvTransport.id, userId: currentUser.id }, (response) => {
+            if (response.consumers) {
+                response.consumers.forEach(consumerData => {
+                    createConsumer(consumerData, roomId);
+                });
+            }
+        });
+        
+        // Join voice room
+        socket.emit('joinVoiceRoom', { roomId, userId: currentUser.id });
+        
+        isInVoiceChannel = true;
+        updateVoiceUI(true);
+        showVoiceControls();
+        
+    } catch (error) {
+        console.error('Error joining voice channel:', error);
+        alert('Erreur lors de la connexion au canal vocal: ' + error.message);
+        currentVoiceChannel = null;
+        isInVoiceChannel = false;
+    }
+}
+
+// Create consumer for remote audio
+async function createConsumer(consumerData, roomId) {
+    try {
+        if (!voiceRecvTransport || !mediasoupDevice) {
+            console.error('Recv transport or device not initialized');
+            return;
+        }
+        
+        const consumer = await voiceRecvTransport.consume({
+            id: consumerData.id,
+            producerId: consumerData.producerId,
+            kind: consumerData.kind,
+            rtpParameters: consumerData.rtpParameters,
+        });
+        
+        voiceConsumers.set(consumer.id, consumer);
+        
+        // Play audio
+        const audioTrack = consumer.track;
+        const audioElement = new Audio();
+        const stream = new MediaStream([audioTrack]);
+        audioElement.srcObject = stream;
+        audioElement.autoplay = true;
+        audioElement.play().catch(e => console.error('Error playing audio:', e));
+        
+        // Store audio element for cleanup
+        consumer.audioElement = audioElement;
+        
+    } catch (error) {
+        console.error('Error creating consumer:', error);
+    }
+}
+
+// Leave voice channel
+async function leaveVoiceChannel() {
+    if (!isInVoiceChannel) return;
+    
+    try {
+        const roomId = `channel_${currentVoiceChannel.id}`;
+        
+        // Close producer
+        if (voiceProducer) {
+            socket.emit('closeProducer', {
+                roomId,
+                producerId: voiceProducer,
+                userId: currentUser.id,
+            });
+        }
+        
+        // Close transports
+        if (voiceSendTransport) {
+            voiceSendTransport.close();
+            voiceSendTransport = null;
+        }
+        
+        if (voiceRecvTransport) {
+            voiceRecvTransport.close();
+            voiceRecvTransport = null;
+        }
+        
+        // Close consumers and audio elements
+        voiceConsumers.forEach(consumer => {
+            if (consumer.audioElement) {
+                consumer.audioElement.pause();
+                consumer.audioElement.srcObject = null;
+            }
+            consumer.close();
+        });
+        voiceConsumers.clear();
+        
+        // Stop local audio tracks (they will be stopped when transport closes)
+        
+        // Leave room
+        socket.emit('leaveVoiceRoom', {
+            roomId,
+            transportId: voiceSendTransport?.id,
+            userId: currentUser.id,
+        });
+        
+        isInVoiceChannel = false;
+        currentVoiceChannel = null;
+        voiceProducer = null;
+        mediasoupDevice = null;
+        updateVoiceUI(false);
+        hideVoiceControls();
+        
+    } catch (error) {
+        console.error('Error leaving voice channel:', error);
+    }
+}
+
+// Update voice UI
+function updateVoiceUI(inVoice) {
+    renderChannels();
+}
+
+// Show voice controls
+function showVoiceControls() {
+    let voiceControls = document.getElementById('voice-controls');
+    if (!voiceControls) {
+        voiceControls = document.createElement('div');
+        voiceControls.id = 'voice-controls';
+        voiceControls.className = 'voice-controls';
+        voiceControls.innerHTML = `
+            <div class="voice-controls-header">
+                <span>🔊 Canal vocal: ${currentVoiceChannel.name}</span>
+                <button id="btn-leave-voice" class="icon-btn danger" title="Quitter le canal vocal">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                </button>
+            </div>
+            <div id="voice-participants" class="voice-participants">
+                <!-- Participants will be listed here -->
+            </div>
+        `;
+        
+        const chatView = document.getElementById('chat-view');
+        if (chatView) {
+            chatView.appendChild(voiceControls);
+        }
+        
+        const btnLeaveVoice = document.getElementById('btn-leave-voice');
+        if (btnLeaveVoice) {
+            btnLeaveVoice.addEventListener('click', leaveVoiceChannel);
+        }
+    }
+    voiceControls.classList.remove('hidden');
+    updateVoiceParticipantsList();
+}
+
+// Hide voice controls
+function hideVoiceControls() {
+    const voiceControls = document.getElementById('voice-controls');
+    if (voiceControls) {
+        voiceControls.classList.add('hidden');
+    }
+}
+
+// Socket events for voice
+socket.on('voiceRoomJoined', (data) => {
+    console.log('Joined voice room:', data);
+    voiceParticipants.clear();
+    if (data.participants) {
+        data.participants.forEach(userId => {
+            voiceParticipants.set(userId, { userId, speaking: false });
+        });
+    }
+    updateVoiceParticipantsList();
+});
+
+socket.on('userJoinedVoice', (data) => {
+    console.log('User joined voice:', data);
+    voiceParticipants.set(data.userId, { userId: data.userId, speaking: false });
+    updateVoiceParticipantsList();
+});
+
+socket.on('userLeftVoice', (data) => {
+    console.log('User left voice:', data);
+    voiceParticipants.delete(data.userId);
+    updateVoiceParticipantsList();
+});
+
+socket.on('newProducer', async (data) => {
+    console.log('New producer:', data);
+    if (isInVoiceChannel && voiceRecvTransport && currentVoiceChannel) {
+        const roomId = `channel_${currentVoiceChannel.id}`;
+        socket.emit('createConsumers', { roomId, transportId: voiceRecvTransport.id, userId: currentUser.id }, (response) => {
+            if (response.consumers) {
+                response.consumers.forEach(consumerData => {
+                    createConsumer(consumerData, roomId);
+                });
+            }
+        });
+    }
+});
+
+socket.on('producerClosed', (data) => {
+    console.log('Producer closed:', data);
+    voiceConsumers.forEach((consumer, id) => {
+        if (consumer.producerId === data.producerId) {
+            if (consumer.audioElement) {
+                consumer.audioElement.pause();
+                consumer.audioElement.srcObject = null;
+            }
+            consumer.close();
+            voiceConsumers.delete(id);
+        }
+    });
+    voiceParticipants.delete(data.userId);
+    updateVoiceParticipantsList();
+});
+
+// Update voice participants list
+function updateVoiceParticipantsList() {
+    const participantsList = document.getElementById('voice-participants');
+    if (!participantsList) return;
+    
+    participantsList.innerHTML = '';
+    
+    if (voiceParticipants.size === 0) {
+        participantsList.innerHTML = '<div class="no-participants">Aucun participant</div>';
+        return;
+    }
+    
+    voiceParticipants.forEach((participant, userId) => {
+        const user = users.find(u => u.id === userId) || { username: `User ${userId}` };
+        const div = document.createElement('div');
+        div.className = `voice-participant ${participant.speaking ? 'speaking' : ''}`;
+        div.innerHTML = `
+            <div class="voice-participant-avatar">
+                <div class="avatar">${user.username.charAt(0).toUpperCase()}</div>
+                ${participant.speaking ? '<div class="speaking-indicator"></div>' : ''}
+            </div>
+            <span class="voice-participant-name">${user.username}</span>
+        `;
+        participantsList.appendChild(div);
+    });
 }

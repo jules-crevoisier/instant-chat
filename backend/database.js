@@ -36,11 +36,13 @@ db.serialize(() => {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE,
             description TEXT,
-            icon TEXT DEFAULT '💬'
+            icon TEXT DEFAULT '💬',
+            voice_channel INTEGER DEFAULT 0
         )
     `, (err) => {
         if (!err) {
             db.run("ALTER TABLE channels ADD COLUMN icon TEXT DEFAULT '💬'", () => { });
+            db.run("ALTER TABLE channels ADD COLUMN voice_channel INTEGER DEFAULT 0", () => { });
         }
     });
 
@@ -81,6 +83,11 @@ db.serialize(() => {
             db.run("ALTER TABLE messages ADD COLUMN file_name TEXT", () => { });
             db.run("ALTER TABLE messages ADD COLUMN file_type TEXT", () => { });
             db.run("ALTER TABLE messages ADD COLUMN file_size INTEGER", () => { });
+            db.run("ALTER TABLE messages ADD COLUMN files_json TEXT", () => { });
+            db.run("ALTER TABLE messages ADD COLUMN edited INTEGER DEFAULT 0", () => { });
+            db.run("ALTER TABLE messages ADD COLUMN deleted INTEGER DEFAULT 0", () => { });
+            db.run("ALTER TABLE messages ADD COLUMN edited_at DATETIME", () => { });
+            db.run("ALTER TABLE messages ADD COLUMN pinned INTEGER DEFAULT 0", () => { });
         }
     });
 

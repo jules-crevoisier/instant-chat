@@ -27,41 +27,81 @@ const storage = multer.diskStorage({
     }
 });
 
-// File filter - accept audio, video, and documents
-const fileFilter = (req, file, cb) => {
-    const allowedTypes = {
-        // Audio
-        "audio/mpeg": [".mp3"],
-        "audio/wav": [".wav"],
-        "audio/ogg": [".ogg"],
-        "audio/mp4": [".m4a"],
-        // Video
-        "video/mp4": [".mp4"],
-        "video/webm": [".webm"],
-        "video/ogg": [".ogv"],
-        "video/quicktime": [".mov"],
-        // Documents
-        "application/pdf": [".pdf"],
-        "application/msword": [".doc"],
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
-        "application/vnd.ms-excel": [".xls"],
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-        "application/vnd.ms-powerpoint": [".ppt"],
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
-        "text/plain": [".txt"],
-        "text/csv": [".csv"],
-        // Images (bonus)
-        "image/jpeg": [".jpg", ".jpeg"],
-        "image/png": [".png"],
-        "image/gif": [".gif"],
-        "image/webp": [".webp"]
-    };
+// Allowed file types with MIME types and extensions mapping
+const ALLOWED_TYPES = {
+    // Audio
+    "audio/mpeg": [".mp3"],
+    "audio/wav": [".wav"],
+    "audio/ogg": [".ogg"],
+    "audio/mp4": [".m4a"],
+    // Video
+    "video/mp4": [".mp4"],
+    "video/webm": [".webm"],
+    "video/ogg": [".ogv"],
+    "video/quicktime": [".mov"],
+    // Documents
+    "application/pdf": [".pdf"],
+    "application/msword": [".doc"],
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+    "application/vnd.ms-excel": [".xls"],
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+    "application/vnd.ms-powerpoint": [".ppt"],
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
+    "text/plain": [".txt"],
+    "text/csv": [".csv"],
+    // Images
+    "image/jpeg": [".jpg", ".jpeg"],
+    "image/png": [".png"],
+    "image/gif": [".gif"],
+    "image/webp": [".webp"]
+};
 
-    if (allowedTypes[file.mimetype]) {
-        cb(null, true);
-    } else {
-        cb(new Error("Type de fichier non autorisé"), false);
+// Allowed extensions (for double validation)
+const ALLOWED_EXTENSIONS = new Set();
+Object.values(ALLOWED_TYPES).forEach(exts => {
+    exts.forEach(ext => ALLOWED_EXTENSIONS.add(ext.toLowerCase()));
+});
+
+// Dangerous extensions to block
+const DANGEROUS_EXTENSIONS = new Set([
+    ".exe", ".bat", ".cmd", ".com", ".pif", ".scr", ".vbs", ".js", ".jar",
+    ".sh", ".ps1", ".dll", ".msi", ".app", ".deb", ".rpm", ".dmg",
+    ".php", ".asp", ".aspx", ".jsp", ".py", ".rb", ".pl", ".cgi"
+]);
+
+// File filter with security checks
+const fileFilter = (req, file, cb) => {
+    // Get file extension
+    const fileExt = path.extname(file.originalname).toLowerCase();
+    
+    // Block dangerous extensions
+    if (DANGEROUS_EXTENSIONS.has(fileExt)) {
+        return cb(new Error("Type de fichier dangereux non autorisé"), false);
     }
+    
+    // Check if extension is allowed
+    if (!ALLOWED_EXTENSIONS.has(fileExt)) {
+        return cb(new Error("Extension de fichier non autorisée"), false);
+    }
+    
+    // Check if MIME type is allowed
+    if (!ALLOWED_TYPES[file.mimetype]) {
+        return cb(new Error("Type MIME non autorisé"), false);
+    }
+    
+    // Verify MIME type matches extension
+    const allowedExts = ALLOWED_TYPES[file.mimetype];
+    if (!allowedExts.includes(fileExt)) {
+        return cb(new Error("Le type MIME ne correspond pas à l'extension du fichier"), false);
+    }
+    
+    // Sanitize filename
+    const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (sanitizedName !== file.originalname) {
+        file.originalname = sanitizedName;
+    }
+    
+    cb(null, true);
 };
 
 // Max file size: 50MB (50 * 1024 * 1024 bytes)
@@ -71,7 +111,8 @@ const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {
-        fileSize: MAX_FILE_SIZE
+        fileSize: MAX_FILE_SIZE,
+        files: 10 // Maximum 10 files per request
     }
 });
 
@@ -91,6 +132,25 @@ const io = new Server(server, {
 
 const db = require("./database");
 const SECRET_KEY = "super_secret_key_change_me"; // In production use env var
+const voiceServer = require("./voiceServer");
+
+// --- AUTHENTICATION MIDDLEWARE ---
+
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        return res.status(401).json({ error: "Token manquant" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    jwt.verify(token, SECRET_KEY, (err, decoded) => {
+        if (err) {
+            return res.status(403).json({ error: "Token invalide" });
+        }
+        req.user = decoded;
+        next();
+    });
+}
 
 // --- AUTHENTICATION ---
 
@@ -224,21 +284,132 @@ app.get("/api/users", (req, res) => {
 
 // --- FILE UPLOAD ---
 
-// Upload file endpoint
+// Upload file endpoint with security checks
 app.post("/api/upload", upload.single("file"), (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: "Aucun fichier fourni" });
     }
 
+    // Additional security checks
+    const fileExt = path.extname(req.file.originalname).toLowerCase();
+    
+    // Double-check extension
+    if (!ALLOWED_EXTENSIONS.has(fileExt)) {
+        // Delete uploaded file if it passed through somehow
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ error: "Extension de fichier non autorisée" });
+    }
+    
+    // Verify file size (double check)
+    if (req.file.size > MAX_FILE_SIZE) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ error: "Fichier trop volumineux" });
+    }
+    
+    // Sanitize original filename for storage
+    const sanitizedName = req.file.originalname
+        .replace(/[^a-zA-Z0-9._-]/g, '_')
+        .substring(0, 255); // Limit filename length
+
     const fileInfo = {
         path: `/uploads/${req.file.filename}`,
-        originalName: req.file.originalname,
+        originalName: sanitizedName,
         mimetype: req.file.mimetype,
         size: req.file.size,
         filename: req.file.filename
     };
 
     res.json(fileInfo);
+});
+
+// --- USER STATUS ---
+
+// Update user status
+app.post("/api/user/status", authenticateToken, (req, res) => {
+    const { status } = req.body;
+    const userId = req.user.id;
+    
+    const validStatuses = ['online', 'away', 'dnd', 'offline'];
+    if (!validStatuses.includes(status)) {
+        return res.status(400).json({ error: "Statut invalide" });
+    }
+    
+    db.run("UPDATE users SET status = ? WHERE id = ?", [status, userId], function(err) {
+        if (err) {
+            return res.status(500).json({ error: "Erreur serveur" });
+        }
+        
+        // Broadcast status update
+        io.emit("user_status_updated", { userId, status });
+        
+        res.json({ status, success: true });
+    });
+});
+
+// --- PINNED MESSAGES ---
+
+// Pin a message
+app.post("/api/messages/pin", authenticateToken, (req, res) => {
+    const { messageId } = req.body;
+    const userId = req.user.id;
+    
+    // Check if user has permission (sender or channel admin)
+    db.get("SELECT * FROM messages WHERE id = ?", [messageId], (err, message) => {
+        if (err || !message) {
+            return res.status(404).json({ error: "Message non trouvé" });
+        }
+        
+        // Check if user is sender or has admin rights (simplified: sender can pin)
+        if (message.sender_id !== userId) {
+            return res.status(403).json({ error: "Permission refusée" });
+        }
+        
+        db.run("UPDATE messages SET pinned = 1 WHERE id = ?", [messageId], function(err) {
+            if (err) {
+                return res.status(500).json({ error: "Erreur serveur" });
+            }
+            
+            // Broadcast pin update
+            if (message.channel_id) {
+                io.to(`channel_${message.channel_id}`).emit("message_pinned", { messageId, pinned: true });
+            } else if (message.recipient_id) {
+                io.to(`user_${message.recipient_id}`).emit("message_pinned", { messageId, pinned: true });
+            }
+            
+            res.json({ success: true });
+        });
+    });
+});
+
+// Unpin a message
+app.post("/api/messages/unpin", authenticateToken, (req, res) => {
+    const { messageId } = req.body;
+    const userId = req.user.id;
+    
+    db.get("SELECT * FROM messages WHERE id = ?", [messageId], (err, message) => {
+        if (err || !message) {
+            return res.status(404).json({ error: "Message non trouvé" });
+        }
+        
+        if (message.sender_id !== userId) {
+            return res.status(403).json({ error: "Permission refusée" });
+        }
+        
+        db.run("UPDATE messages SET pinned = 0 WHERE id = ?", [messageId], function(err) {
+            if (err) {
+                return res.status(500).json({ error: "Erreur serveur" });
+            }
+            
+            // Broadcast unpin update
+            if (message.channel_id) {
+                io.to(`channel_${message.channel_id}`).emit("message_pinned", { messageId, pinned: false });
+            } else if (message.recipient_id) {
+                io.to(`user_${message.recipient_id}`).emit("message_pinned", { messageId, pinned: false });
+            }
+            
+            res.json({ success: true });
+        });
+    });
 });
 
 // Get file info
@@ -281,6 +452,201 @@ app.get("/api/channels/:channelId/members", (req, res) => {
 
 io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
+    
+    // --- VOICE CHANNEL HANDLERS ---
+    
+    // Get router RTP capabilities
+    socket.on("getRouterRtpCapabilities", async (data, callback) => {
+        try {
+            const { roomId } = data;
+            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
+            const rtpCapabilities = voiceServer.getRouterRtpCapabilities(room);
+            callback({ rtpCapabilities });
+        } catch (error) {
+            console.error("Error getting router RTP capabilities:", error);
+            callback({ error: error.message });
+        }
+    });
+    
+    // Create transport
+    socket.on("createTransport", async (data, callback) => {
+        try {
+            const { roomId, userId } = data;
+            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
+            const { transport, transportData } = await voiceServer.createTransport(room, userId);
+            
+            // Store transport in participant
+            let participant = room.participants.get(userId);
+            if (!participant) {
+                participant = { userId };
+                room.participants.set(userId, participant);
+            }
+            participant.transport = transport;
+            
+            callback({ transportData });
+        } catch (error) {
+            console.error("Error creating transport:", error);
+            callback({ error: error.message });
+        }
+    });
+    
+    // Connect transport
+    socket.on("connectTransport", async (data, callback) => {
+        try {
+            const { roomId, transportId, dtlsParameters } = data;
+            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
+            await voiceServer.connectTransport(room, transportId, dtlsParameters);
+            callback({ success: true });
+        } catch (error) {
+            console.error("Error connecting transport:", error);
+            callback({ error: error.message });
+        }
+    });
+    
+    // Produce audio
+    socket.on("produce", async (data, callback) => {
+        try {
+            const { roomId, transportId, rtpParameters, userId } = data;
+            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
+            const result = await voiceServer.createProducer(room, transportId, rtpParameters, userId);
+            
+            // Notify other participants
+            socket.to(`voice_${roomId}`).emit("newProducer", {
+                producerId: result.id,
+                userId,
+            });
+            
+            callback({ id: result.id, newConsumers: result.newConsumers });
+        } catch (error) {
+            console.error("Error producing:", error);
+            callback({ error: error.message });
+        }
+    });
+    
+    // Create consumers for new participant
+    socket.on("createConsumers", async (data, callback) => {
+        try {
+            const { roomId, transportId, userId } = data;
+            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
+            const consumers = await voiceServer.createConsumersForParticipant(room, transportId, userId);
+            callback({ consumers });
+        } catch (error) {
+            console.error("Error creating consumers:", error);
+            callback({ error: error.message });
+        }
+    });
+    
+    // Close producer
+    socket.on("closeProducer", async (data) => {
+        try {
+            const { roomId, producerId, userId } = data;
+            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
+            await voiceServer.closeProducer(room, producerId, userId);
+            
+            // Notify other participants
+            socket.to(`voice_${roomId}`).emit("producerClosed", { producerId, userId });
+        } catch (error) {
+            console.error("Error closing producer:", error);
+        }
+    });
+    
+    // Join voice room
+    socket.on("joinVoiceRoom", async (data) => {
+        try {
+            const { roomId, userId } = data;
+            socket.join(`voice_${roomId}`);
+            
+            const participants = voiceServer.getRoomParticipants(roomId);
+            socket.emit("voiceRoomJoined", { roomId, participants });
+            
+            // Notify others
+            socket.to(`voice_${roomId}`).emit("userJoinedVoice", { userId });
+        } catch (error) {
+            console.error("Error joining voice room:", error);
+        }
+    });
+    
+    // Leave voice room
+    socket.on("leaveVoiceRoom", async (data) => {
+        try {
+            const { roomId, transportId, userId } = data;
+            
+            if (transportId) {
+                const room = await voiceServer.getOrCreateVoiceRoom(roomId);
+                await voiceServer.closeTransport(room, transportId, userId);
+            }
+            
+            socket.leave(`voice_${roomId}`);
+            socket.to(`voice_${roomId}`).emit("userLeftVoice", { userId });
+        } catch (error) {
+            console.error("Error leaving voice room:", error);
+        }
+    });
+    
+    // Handle user status updates
+    socket.on("user_status_update", (data) => {
+        const { userId, status } = data;
+        db.run("UPDATE users SET status = ? WHERE id = ?", [status, userId], (err) => {
+            if (!err) {
+                io.emit("user_status_updated", { userId, status });
+            }
+        });
+    });
+    
+    // Get pinned messages
+    socket.on("get_pinned_messages", (data) => {
+        let query, params;
+        
+        if (data.channelId) {
+            query = `
+                SELECT m.*, 
+                (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
+                 FROM reactions r 
+                 JOIN users u ON r.user_id = u.id 
+                 WHERE r.message_id = m.id) as reactions
+                FROM messages m 
+                WHERE m.channel_id = ? AND m.pinned = 1 AND m.deleted = 0
+                ORDER BY m.date DESC
+            `;
+            params = [data.channelId];
+        } else if (data.recipientId) {
+            query = `
+                SELECT m.*, 
+                (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
+                 FROM reactions r 
+                 JOIN users u ON r.user_id = u.id 
+                 WHERE r.message_id = m.id) as reactions
+                FROM messages m 
+                WHERE ((m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)) 
+                   OR (m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)))
+                   AND m.pinned = 1 AND m.deleted = 0
+                ORDER BY m.date DESC
+            `;
+            params = [data.myId, data.recipientId, data.recipientId, data.myId];
+        } else {
+            socket.emit("pinned_messages", []);
+            return;
+        }
+        
+        db.all(query, params, (err, rows) => {
+            if (!err) {
+                const messages = rows.map(row => ({
+                    ...row,
+                    reactions: row.reactions ? JSON.parse(row.reactions) : [],
+                    files: row.files_json ? JSON.parse(row.files_json) : (row.file_path ? [{
+                        file_path: row.file_path,
+                        file_name: row.file_name,
+                        file_type: row.file_type,
+                        file_size: row.file_size
+                    }] : null),
+                    pinned: row.pinned === 1
+                }));
+                socket.emit("pinned_messages", messages);
+            } else {
+                socket.emit("pinned_messages", []);
+            }
+        });
+    });
 
     // Join a personal room for DMs based on user ID (we need the user ID from handshake or login event)
     // For simplicity, we'll rely on the client sending a "login" event or just joining manually
@@ -311,84 +677,198 @@ io.on("connection", (socket) => {
     });
 
     socket.on("create_channel", (data) => {
-        // data can be string (old way) or object { name, icon }
+        // data can be string (old way) or object { name, icon, voice_channel }
         let name = data;
         let icon = "💬";
+        let voiceChannel = 0;
 
         if (typeof data === 'object') {
             name = data.name;
-            icon = data.icon || "💬";
+            icon = data.icon || (data.voice_channel ? "🔊" : "💬");
+            voiceChannel = data.voice_channel ? 1 : 0;
         }
 
         if (!name) return;
 
-        db.run("INSERT INTO channels (name, description, icon) VALUES (?, ?, ?)", [name, "Channel utilisateur", icon], function (err) {
+        db.run("INSERT INTO channels (name, description, icon, voice_channel) VALUES (?, ?, ?, ?)", 
+            [name, "Channel utilisateur", icon, voiceChannel], function (err) {
             if (!err) {
-                const newChannel = { id: this.lastID, name: name, description: "Channel utilisateur", icon: icon };
+                const newChannel = { 
+                    id: this.lastID, 
+                    name: name, 
+                    description: "Channel utilisateur", 
+                    icon: icon,
+                    voice_channel: voiceChannel
+                };
                 io.emit("channel_created", newChannel);
             }
         });
     });
 
-    socket.on("join_channel", (channelId) => {
-        socket.join(`channel_${channelId}`);
+    // Helper function to load channel messages
+    function loadChannelMessages(socket, channelId, beforeMessageId, limit, isInitial) {
+        let query, params;
+        
+        if (beforeMessageId) {
+            // Load messages before a specific message ID
+            query = `
+                SELECT m.*, 
+                (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
+                 FROM reactions r 
+                 JOIN users u ON r.user_id = u.id 
+                 WHERE r.message_id = m.id) as reactions,
+                rm.username as reply_username,
+                rm.message as reply_message
+                FROM messages m 
+                LEFT JOIN messages rm ON m.reply_to_id = rm.id
+                WHERE m.channel_id = ? AND m.id < ?
+                ORDER BY m.date DESC 
+                LIMIT ?
+            `;
+            params = [channelId, beforeMessageId, limit];
+        } else {
+            // Load latest messages
+            query = `
+                SELECT m.*, 
+                (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
+                 FROM reactions r 
+                 JOIN users u ON r.user_id = u.id 
+                 WHERE r.message_id = m.id) as reactions,
+                rm.username as reply_username,
+                rm.message as reply_message
+                FROM messages m 
+                LEFT JOIN messages rm ON m.reply_to_id = rm.id
+                WHERE m.channel_id = ? 
+                ORDER BY m.date DESC 
+                LIMIT ?
+            `;
+            params = [channelId, limit];
+        }
 
-        // Send history for this channel with reactions and reply info
-        const query = `
-            SELECT m.*, 
-            (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
-             FROM reactions r 
-             JOIN users u ON r.user_id = u.id 
-             WHERE r.message_id = m.id) as reactions,
-            rm.username as reply_username,
-            rm.message as reply_message
-            FROM messages m 
-            LEFT JOIN messages rm ON m.reply_to_id = rm.id
-            WHERE m.channel_id = ? 
-            ORDER BY m.date DESC LIMIT 50
-        `;
-
-        db.all(query, [channelId], (err, rows) => {
+        db.all(query, params, (err, rows) => {
             if (!err) {
-                // Parse JSON reactions
                 const messages = rows.map(row => ({
                     ...row,
-                    reactions: row.reactions ? JSON.parse(row.reactions) : []
+                    reactions: row.reactions ? JSON.parse(row.reactions) : [],
+                    files: row.files_json ? JSON.parse(row.files_json) : (row.file_path ? [{
+                        file_path: row.file_path,
+                        file_name: row.file_name,
+                        file_type: row.file_type,
+                        file_size: row.file_size
+                    }] : null),
+                    edited: row.edited === 1,
+                    deleted: row.deleted === 1,
+                    edited_at: row.edited_at
                 }));
-                socket.emit("message_history", messages.reverse());
+                
+                if (isInitial) {
+                    socket.emit("message_history", messages.reverse());
+                } else {
+                    socket.emit("more_messages", messages.reverse());
+                }
             } else {
                 console.error(err);
+                if (!isInitial) {
+                    socket.emit("more_messages", []);
+                }
             }
         });
+    }
+
+    socket.on("join_channel", (channelId) => {
+        socket.join(`channel_${channelId}`);
+        // Load first 50 messages
+        loadChannelMessages(socket, channelId, null, 50, true);
+    });
+
+    // Load more messages for channel (pagination)
+    socket.on("load_more_messages", (data) => {
+        const { channelId, recipientId, beforeMessageId, limit = 50 } = data;
+        
+        if (channelId) {
+            loadChannelMessages(socket, channelId, beforeMessageId, limit, false);
+        } else if (recipientId) {
+            loadDMMessages(socket, data.myId, recipientId, beforeMessageId, limit, false);
+        }
     });
 
     socket.on("join_dm", (data) => {
         const { myId, otherId } = data;
-        const query = `
-            SELECT m.*, 
-            (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
-             FROM reactions r 
-             JOIN users u ON r.user_id = u.id 
-             WHERE r.message_id = m.id) as reactions,
-            rm.username as reply_username,
-            rm.message as reply_message
-            FROM messages m 
-            LEFT JOIN messages rm ON m.reply_to_id = rm.id
-            WHERE (m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)) 
-               OR (m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)) 
-            ORDER BY m.date DESC LIMIT 50
-        `;
+        // Load first 50 messages
+        loadDMMessages(socket, myId, otherId, null, 50, true);
+    });
 
-        db.all(query, [myId, otherId, otherId, myId], (err, rows) => {
+    // Helper function to load DM messages
+    function loadDMMessages(socket, myId, otherId, beforeMessageId, limit, isInitial) {
+        let query, params;
+        
+        if (beforeMessageId) {
+            // Load messages before a specific message ID
+            query = `
+                SELECT m.*, 
+                (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
+                 FROM reactions r 
+                 JOIN users u ON r.user_id = u.id 
+                 WHERE r.message_id = m.id) as reactions,
+                rm.username as reply_username,
+                rm.message as reply_message
+                FROM messages m 
+                LEFT JOIN messages rm ON m.reply_to_id = rm.id
+                WHERE ((m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)) 
+                   OR (m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)))
+                   AND m.id < ?
+                ORDER BY m.date DESC 
+                LIMIT ?
+            `;
+            params = [myId, otherId, otherId, myId, beforeMessageId, limit];
+        } else {
+            // Load latest messages
+            query = `
+                SELECT m.*, 
+                (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
+                 FROM reactions r 
+                 JOIN users u ON r.user_id = u.id 
+                 WHERE r.message_id = m.id) as reactions,
+                rm.username as reply_username,
+                rm.message as reply_message
+                FROM messages m 
+                LEFT JOIN messages rm ON m.reply_to_id = rm.id
+                WHERE (m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)) 
+                   OR (m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)) 
+                ORDER BY m.date DESC 
+                LIMIT ?
+            `;
+            params = [myId, otherId, otherId, myId, limit];
+        }
+
+        db.all(query, params, (err, rows) => {
             if (!err) {
                 const messages = rows.map(row => ({
                     ...row,
-                    reactions: row.reactions ? JSON.parse(row.reactions) : []
+                    reactions: row.reactions ? JSON.parse(row.reactions) : [],
+                    files: row.files_json ? JSON.parse(row.files_json) : (row.file_path ? [{
+                        file_path: row.file_path,
+                        file_name: row.file_name,
+                        file_type: row.file_type,
+                        file_size: row.file_size
+                    }] : null),
+                    edited: row.edited === 1,
+                    deleted: row.deleted === 1,
+                    edited_at: row.edited_at
                 }));
-                socket.emit("message_history", messages.reverse());
+                
+                if (isInitial) {
+                    socket.emit("message_history", messages.reverse());
+                } else {
+                    socket.emit("more_messages", messages.reverse());
+                }
+            } else {
+                if (!isInitial) {
+                    socket.emit("more_messages", []);
+                }
             }
         });
-    });
+    }
 
     socket.on("add_reaction", (data) => {
         const { message_id, emoji, user_id, channel_id, recipient_id } = data;
@@ -442,6 +922,93 @@ io.on("connection", (socket) => {
         socket.leave(`channel_${channelId}`);
     });
 
+    // Edit message
+    socket.on("edit_message", (data) => {
+        const { message_id, new_message, user_id, channel_id, recipient_id } = data;
+        
+        // Verify user owns the message
+        db.get("SELECT sender_id FROM messages WHERE id = ?", [message_id], (err, row) => {
+            if (err || !row) {
+                return socket.emit("edit_message_error", { error: "Message introuvable" });
+            }
+            
+            if (row.sender_id !== user_id) {
+                return socket.emit("edit_message_error", { error: "Vous ne pouvez modifier que vos propres messages" });
+            }
+            
+            // Update message
+            db.run(
+                "UPDATE messages SET message = ?, edited = 1, edited_at = CURRENT_TIMESTAMP WHERE id = ?",
+                [new_message, message_id],
+                function (err) {
+                    if (err) {
+                        return socket.emit("edit_message_error", { error: "Erreur lors de la modification" });
+                    }
+                    
+                    // Get updated message
+                    db.get("SELECT * FROM messages WHERE id = ?", [message_id], (err, updatedMsg) => {
+                        if (!err && updatedMsg) {
+                            const messageData = {
+                                id: updatedMsg.id,
+                                message: updatedMsg.message,
+                                edited: true,
+                                edited_at: updatedMsg.edited_at
+                            };
+                            
+                            // Broadcast to channel or DM
+                            if (channel_id) {
+                                io.to(`channel_${channel_id}`).emit("message_edited", messageData);
+                            } else if (recipient_id) {
+                                io.to(`user_${recipient_id}`).emit("message_edited", messageData);
+                                io.to(`user_${user_id}`).emit("message_edited", messageData);
+                            }
+                        }
+                    });
+                }
+            );
+        });
+    });
+
+    // Delete message
+    socket.on("delete_message", (data) => {
+        const { message_id, user_id, channel_id, recipient_id } = data;
+        
+        // Verify user owns the message
+        db.get("SELECT sender_id FROM messages WHERE id = ?", [message_id], (err, row) => {
+            if (err || !row) {
+                return socket.emit("delete_message_error", { error: "Message introuvable" });
+            }
+            
+            if (row.sender_id !== user_id) {
+                return socket.emit("delete_message_error", { error: "Vous ne pouvez supprimer que vos propres messages" });
+            }
+            
+            // Soft delete (mark as deleted instead of actually deleting)
+            db.run(
+                "UPDATE messages SET deleted = 1, message = '[Message supprimé]' WHERE id = ?",
+                [message_id],
+                function (err) {
+                    if (err) {
+                        return socket.emit("delete_message_error", { error: "Erreur lors de la suppression" });
+                    }
+                    
+                    const messageData = {
+                        id: message_id,
+                        deleted: true
+                    };
+                    
+                    // Broadcast to channel or DM
+                    if (channel_id) {
+                        io.to(`channel_${channel_id}`).emit("message_deleted", messageData);
+                    } else if (recipient_id) {
+                        io.to(`user_${recipient_id}`).emit("message_deleted", messageData);
+                        io.to(`user_${user_id}`).emit("message_deleted", messageData);
+                    }
+                }
+            );
+        });
+    });
+
     // --- CONVERSATIONS ---
 
     app.get("/api/conversations/:userId", (req, res) => {
@@ -459,7 +1026,21 @@ io.on("connection", (socket) => {
     });
 
     socket.on("send_message", (data) => {
-        const { username, message, channel_id, recipient_id, sender_id, reply_to_id, file_path, file_name, file_type, file_size } = data;
+        const { username, message, channel_id, recipient_id, sender_id, reply_to_id, file_path, file_name, file_type, file_size, files } = data;
+        
+        // Handle multiple files: if files array is provided, use it; otherwise fall back to single file
+        let files_json = null;
+        if (files && Array.isArray(files) && files.length > 0) {
+            files_json = JSON.stringify(files);
+        } else if (file_path) {
+            // Single file: convert to array format for consistency
+            files_json = JSON.stringify([{
+                file_path,
+                file_name,
+                file_type,
+                file_size
+            }]);
+        }
 
         // Helper to get reply info if it exists
         const getReplyInfo = (callback) => {
@@ -476,8 +1057,8 @@ io.on("connection", (socket) => {
             if (recipient_id) {
                 // Private Message
                 db.run(
-                    "INSERT INTO messages (username, message, recipient_id, sender_id, reply_to_id, file_path, file_name, file_type, file_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [username, message, recipient_id, sender_id, reply_to_id, file_path || null, file_name || null, file_type || null, file_size || null],
+                    "INSERT INTO messages (username, message, recipient_id, sender_id, reply_to_id, file_path, file_name, file_type, file_size, files_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [username, message, recipient_id, sender_id, reply_to_id, file_path || null, file_name || null, file_type || null, file_size || null, files_json],
                     function (err) {
                         if (!err) {
                             const savedMessage = {
@@ -493,6 +1074,13 @@ io.on("connection", (socket) => {
                                 file_name: file_name || null,
                                 file_type: file_type || null,
                                 file_size: file_size || null,
+                                files_json: files_json,
+                                files: files_json ? JSON.parse(files_json) : (file_path ? [{
+                                    file_path,
+                                    file_name,
+                                    file_type,
+                                    file_size
+                                }] : null),
                                 date: new Date().toISOString()
                             };
                             io.to(`user_${recipient_id}`).emit("receive_message", savedMessage);
@@ -507,8 +1095,8 @@ io.on("connection", (socket) => {
             } else {
                 // Channel Message
                 db.run(
-                    "INSERT INTO messages (username, message, channel_id, sender_id, reply_to_id, file_path, file_name, file_type, file_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [username || "Anonyme", message, channel_id, sender_id, reply_to_id, file_path || null, file_name || null, file_type || null, file_size || null],
+                    "INSERT INTO messages (username, message, channel_id, sender_id, reply_to_id, file_path, file_name, file_type, file_size, files_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [username || "Anonyme", message, channel_id, sender_id, reply_to_id, file_path || null, file_name || null, file_type || null, file_size || null, files_json],
                     function (err) {
                         if (!err) {
                             const savedMessage = {
@@ -524,6 +1112,15 @@ io.on("connection", (socket) => {
                                 file_name: file_name || null,
                                 file_type: file_type || null,
                                 file_size: file_size || null,
+                                files_json: files_json,
+                                files: files_json ? JSON.parse(files_json) : (file_path ? [{
+                                    file_path,
+                                    file_name,
+                                    file_type,
+                                    file_size
+                                }] : null),
+                                edited: false,
+                                deleted: false,
                                 date: new Date().toISOString()
                             };
                             io.to(`channel_${channel_id}`).emit("receive_message", savedMessage);
@@ -534,11 +1131,62 @@ io.on("connection", (socket) => {
         });
     });
 
-    socket.on("disconnect", () => {
+    // Typing indicator events
+    socket.on("typing", (data) => {
+        const { username, user_id, channel_id, recipient_id } = data;
+        
+        if (channel_id) {
+            // Broadcast to channel (except sender)
+            socket.to(`channel_${channel_id}`).emit("user_typing", {
+                username,
+                user_id,
+                channel_id
+            });
+        } else if (recipient_id) {
+            // Send to specific recipient
+            io.to(`user_${recipient_id}`).emit("user_typing", {
+                username,
+                user_id,
+                recipient_id
+            });
+        }
+    });
+    
+    socket.on("stop_typing", (data) => {
+        const { username, user_id, channel_id, recipient_id } = data;
+        
+        if (channel_id) {
+            // Broadcast to channel (except sender)
+            socket.to(`channel_${channel_id}`).emit("user_stopped_typing", {
+                username,
+                user_id,
+                channel_id
+            });
+        } else if (recipient_id) {
+            // Send to specific recipient
+            io.to(`user_${recipient_id}`).emit("user_stopped_typing", {
+                username,
+                user_id,
+                recipient_id
+            });
+        }
+    });
+
+    socket.on("disconnect", async () => {
         console.log("User disconnected:", socket.id);
+        
+        // Clean up voice connections on disconnect
+        // This will be handled by the leaveVoiceRoom event
     });
 });
 
-server.listen(3000, () => {
-    console.log("Server running on http://localhost:3000");
+// Initialize Mediasoup before starting server
+voiceServer.initializeMediasoup().then(() => {
+    server.listen(3000, () => {
+        console.log("Server running on http://localhost:3000");
+        console.log("Mediasoup voice server initialized");
+    });
+}).catch(err => {
+    console.error("Failed to initialize Mediasoup:", err);
+    process.exit(1);
 });

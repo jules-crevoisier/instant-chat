@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mediasoup-client@3.6.58/lib/mediasoup-client.min.js"></script>
 </head>
 
 <body>
@@ -72,13 +73,23 @@
             <div class="sidebar">
                 <div class="sidebar-header">
                     <h2>Channels</h2>
-                    <button id="btn-create-channel" class="icon-btn" title="Créer un channel">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
-                    </button>
+                    <div style="display: flex; gap: 0.25rem;">
+                        <button id="btn-pinned-messages" class="icon-btn" title="Messages épinglés">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="6" y1="3" x2="6" y2="15"></line>
+                                <circle cx="18" cy="6" r="3"></circle>
+                                <circle cx="6" cy="18" r="3"></circle>
+                                <path d="M18 9a9 9 0 0 1-9 9"></path>
+                            </svg>
+                        </button>
+                        <button id="btn-create-channel" class="icon-btn" title="Créer un channel">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
                 <div id="channels-list" class="channels-list">
                     <!-- Channels will be injected here -->
@@ -144,6 +155,28 @@
                         <span id="chat-channel-desc" class="channel-desc">Discussion générale</span>
                     </div>
                     <div id="chat-header-actions">
+                        <button id="btn-search" class="icon-btn" title="Rechercher">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <path d="m21 21-4.35-4.35"></path>
+                            </svg>
+                        </button>
+                        <button id="btn-theme-toggle" class="icon-btn" title="Changer le thème">
+                            <svg id="theme-icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="5"></circle>
+                                <line x1="12" y1="1" x2="12" y2="3"></line>
+                                <line x1="12" y1="21" x2="12" y2="23"></line>
+                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                                <line x1="1" y1="12" x2="3" y2="12"></line>
+                                <line x1="21" y1="12" x2="23" y2="12"></line>
+                                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                            </svg>
+                            <svg id="theme-icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                            </svg>
+                        </button>
                         <button id="btn-header-channel-settings" class="icon-btn hidden" title="Options du salon">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2">
@@ -155,8 +188,79 @@
                     </div>
                 </div>
 
+                <!-- Search Panel -->
+                <div id="search-panel" class="search-panel hidden">
+                    <div class="search-header">
+                        <div class="search-input-wrapper">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <path d="m21 21-4.35-4.35"></path>
+                            </svg>
+                            <input type="text" id="search-input" class="search-input" placeholder="Rechercher dans les messages...">
+                            <button id="btn-close-search" class="icon-btn small">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="search-filters">
+                            <select id="search-filter-user" class="search-filter">
+                                <option value="">Tous les utilisateurs</option>
+                            </select>
+                            <select id="search-filter-date" class="search-filter">
+                                <option value="">Toutes les dates</option>
+                                <option value="today">Aujourd'hui</option>
+                                <option value="yesterday">Hier</option>
+                                <option value="week">Cette semaine</option>
+                                <option value="month">Ce mois</option>
+                            </select>
+                        </div>
+                        <div class="search-results-info">
+                            <span id="search-results-count">0 résultat</span>
+                            <div class="search-navigation">
+                                <button id="btn-search-prev" class="icon-btn small" disabled>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="15 18 9 12 15 6"></polyline>
+                                    </svg>
+                                </button>
+                                <button id="btn-search-next" class="icon-btn small" disabled>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="9 18 15 12 9 6"></polyline>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pinned Messages Panel -->
+                <div id="pinned-messages-panel" class="pinned-messages-panel hidden">
+                    <div class="pinned-messages-header">
+                        <h3>Messages épinglés</h3>
+                        <button id="btn-close-pinned" class="icon-btn small">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <div id="pinned-messages-list" class="pinned-messages-list">
+                        <!-- Pinned messages will be injected here -->
+                    </div>
+                </div>
+
                 <div id="messages" class="messages-area">
                     <!-- Messages will be injected here -->
+                </div>
+
+                <div id="typing-indicator" class="typing-indicator hidden">
+                    <span class="typing-text">
+                        <span class="typing-content"></span>
+                        <span class="typing-dots">
+                            <span>.</span><span>.</span><span>.</span>
+                        </span>
+                    </span>
                 </div>
 
                 <div id="reply-indicator" class="reply-indicator hidden">
@@ -164,12 +268,17 @@
                         <span class="reply-to">Répondre à <strong id="reply-to-username">User</strong></span>
                         <span id="reply-to-text" class="reply-text">Message...</span>
                     </div>
-                    <button id="btn-cancel-reply" class="icon-btn small">✕</button>
+                    <button id="btn-cancel-reply" class="icon-btn small">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
                 </div>
 
                 <div class="chat-input-area">
                     <div id="autocomplete-list" class="autocomplete-items hidden"></div>
-                    <input type="file" id="file-input" class="hidden" accept="audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*" multiple>
+                    <input type="file" id="file-input" class="hidden" accept=".jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg,.m4a,.mp4,.webm,.ogv,.mov,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" multiple>
                     <button id="btn-emoji" class="icon-btn" title="Emojis">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
@@ -197,7 +306,12 @@
                 <div id="file-preview-area" class="file-preview-area hidden">
                     <div class="file-preview-header">
                         <span>Fichiers joints</span>
-                        <button id="btn-clear-files" class="icon-btn small">✕</button>
+                        <button id="btn-clear-files" class="icon-btn small">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
                     </div>
                     <div id="file-preview-list" class="file-preview-list"></div>
                 </div>
@@ -214,7 +328,12 @@
         <div class="modal-content profile-modal-content">
             <div class="modal-header">
                 <h3 id="profile-modal-title">Profil</h3>
-                <button class="icon-btn" id="close-profile-modal">✕</button>
+                <button class="icon-btn" id="close-profile-modal">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
             <div class="modal-body profile-modal-body">
                 <div class="profile-header">
