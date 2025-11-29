@@ -119,6 +119,8 @@ const upload = multer({
 // Serve uploaded files statically
 app.use("/uploads", express.static(uploadsDir));
 
+// REMOVED: mediasoup-client - now using WebRTC native
+
 const http = require("http");
 const server = http.createServer(app);
 
@@ -132,7 +134,7 @@ const io = new Server(server, {
 
 const db = require("./database");
 const SECRET_KEY = "super_secret_key_change_me"; // In production use env var
-const voiceServer = require("./voiceServer");
+// REMOVED: voiceServer (mediasoup) - now using WebRTC native
 
 // --- AUTHENTICATION MIDDLEWARE ---
 
@@ -203,9 +205,30 @@ app.get("/api/me", (req, res) => {
 // Get user profile by ID
 app.get("/api/users/:id", (req, res) => {
     const userId = req.params.id;
+    
+    // Get requesting user ID if authenticated (optional)
+    const authHeader = req.headers.authorization;
+    let requestingUserId = null;
+    
+    if (authHeader) {
+        const token = authHeader.split(" ")[1];
+        try {
+            const decoded = jwt.verify(token, SECRET_KEY);
+            requestingUserId = decoded.id;
+        } catch (err) {
+            // Token invalid, continue without user context
+        }
+    }
+    
     db.get("SELECT id, username, bio, avatar, avatar_color, status, created_at FROM users WHERE id = ?", [userId], (err, user) => {
         if (err) return res.status(500).json({ error: "Erreur DB" });
         if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
+        
+        // For invisible users, show as offline to others (except themselves)
+        if (user.status === 'invisible' && user.id !== requestingUserId) {
+            user.status = 'offline';
+        }
+        
         res.json(user);
     });
 });
@@ -241,8 +264,17 @@ app.put("/api/users/:id/profile", (req, res) => {
             values.push(avatar_color);
         }
         if (status !== undefined) {
+            // Validate status
+            let normalizedStatus = status;
+            if (status === 'away') {
+                normalizedStatus = 'idle';
+            }
+            const validStatuses = ['online', 'idle', 'away', 'dnd', 'invisible', 'offline'];
+            if (!validStatuses.includes(status)) {
+                return res.status(400).json({ error: `Statut invalide. Statuts valides: ${validStatuses.join(', ')}` });
+            }
             updates.push("status = ?");
-            values.push(status);
+            values.push(normalizedStatus);
         }
 
         if (updates.length === 0) {
@@ -276,9 +308,32 @@ app.get("/api/channels", (req, res) => {
 // --- USERS ---
 
 app.get("/api/users", (req, res) => {
+    // Get requesting user ID if authenticated (optional)
+    const authHeader = req.headers.authorization;
+    let requestingUserId = null;
+    
+    if (authHeader) {
+        const token = authHeader.split(" ")[1];
+        try {
+            const decoded = jwt.verify(token, SECRET_KEY);
+            requestingUserId = decoded.id;
+        } catch (err) {
+            // Token invalid, continue without user context
+        }
+    }
+    
     db.all("SELECT id, username, bio, avatar, avatar_color, status FROM users", (err, rows) => {
         if (err) return res.status(500).json({ error: "Erreur DB" });
-        res.json(rows);
+        
+        // For invisible users, show as offline to others (except themselves)
+        const processedRows = rows.map(user => {
+            if (user.status === 'invisible' && user.id !== requestingUserId) {
+                return { ...user, status: 'offline' };
+            }
+            return user;
+        });
+        
+        res.json(processedRows);
     });
 });
 
@@ -329,20 +384,30 @@ app.post("/api/user/status", authenticateToken, (req, res) => {
     const { status } = req.body;
     const userId = req.user.id;
     
-    const validStatuses = ['online', 'away', 'dnd', 'offline'];
-    if (!validStatuses.includes(status)) {
-        return res.status(400).json({ error: "Statut invalide" });
+    // Valid statuses: online, idle (or away for compatibility), dnd, invisible, offline
+    // Normalize 'away' to 'idle' for consistency
+    let normalizedStatus = status;
+    if (status === 'away') {
+        normalizedStatus = 'idle';
     }
     
-    db.run("UPDATE users SET status = ? WHERE id = ?", [status, userId], function(err) {
+    const validStatuses = ['online', 'idle', 'away', 'dnd', 'invisible', 'offline'];
+    if (!validStatuses.includes(status)) {
+        return res.status(400).json({ error: `Statut invalide. Statuts valides: ${validStatuses.join(', ')}` });
+    }
+    
+    // Use normalized status for storage
+    db.run("UPDATE users SET status = ? WHERE id = ?", [normalizedStatus, userId], function(err) {
         if (err) {
             return res.status(500).json({ error: "Erreur serveur" });
         }
         
-        // Broadcast status update
-        io.emit("user_status_updated", { userId, status });
+        // Broadcast status update with normalized status
+        // For invisible users, broadcast as offline to others
+        const broadcastStatus = normalizedStatus === 'invisible' ? 'offline' : normalizedStatus;
+        io.emit("user_status_updated", { userId, status: broadcastStatus });
         
-        res.json({ status, success: true });
+        res.json({ status: normalizedStatus, success: true });
     });
 });
 
@@ -432,6 +497,21 @@ app.get("/api/files/:filename", (req, res) => {
 // Get channel members (users who have sent messages in the channel)
 app.get("/api/channels/:channelId/members", (req, res) => {
     const channelId = req.params.channelId;
+    
+    // Get requesting user ID if authenticated (optional)
+    const authHeader = req.headers.authorization;
+    let requestingUserId = null;
+    
+    if (authHeader) {
+        const token = authHeader.split(" ")[1];
+        try {
+            const decoded = jwt.verify(token, SECRET_KEY);
+            requestingUserId = decoded.id;
+        } catch (err) {
+            // Token invalid, continue without user context
+        }
+    }
+    
     const query = `
         SELECT DISTINCT u.id, u.username, u.bio, u.avatar, u.avatar_color, u.status
         FROM users u
@@ -444,7 +524,16 @@ app.get("/api/channels/:channelId/members", (req, res) => {
             console.error("Erreur récupération membres channel:", err);
             return res.status(500).json({ error: "Erreur DB" });
         }
-        res.json(rows);
+        
+        // For invisible users, show as offline to others (except themselves)
+        const processedRows = rows.map(user => {
+            if (user.status === 'invisible' && user.id !== requestingUserId) {
+                return { ...user, status: 'offline' };
+            }
+            return user;
+        });
+        
+        res.json(processedRows);
     });
 });
 
@@ -453,142 +542,151 @@ app.get("/api/channels/:channelId/members", (req, res) => {
 io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
     
-    // --- VOICE CHANNEL HANDLERS ---
+    // --- VOICE CHANNEL HANDLERS (WebRTC Native - Simplified) ---
     
-    // Get router RTP capabilities
-    socket.on("getRouterRtpCapabilities", async (data, callback) => {
-        try {
-            const { roomId } = data;
-            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
-            const rtpCapabilities = voiceServer.getRouterRtpCapabilities(room);
-            callback({ rtpCapabilities });
-        } catch (error) {
-            console.error("Error getting router RTP capabilities:", error);
-            callback({ error: error.message });
-        }
-    });
+    // REMOVED: All mediasoup-related socket events:
+    // - getRouterRtpCapabilities
+    // - createTransport
+    // - connectTransport
+    // - produce
+    // - createConsumers
+    // - closeProducer
+    // WebRTC native handles these directly between peers
     
-    // Create transport
-    socket.on("createTransport", async (data, callback) => {
-        try {
-            const { roomId, userId } = data;
-            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
-            const { transport, transportData } = await voiceServer.createTransport(room, userId);
-            
-            // Store transport in participant
-            let participant = room.participants.get(userId);
-            if (!participant) {
-                participant = { userId };
-                room.participants.set(userId, participant);
-            }
-            participant.transport = transport;
-            
-            callback({ transportData });
-        } catch (error) {
-            console.error("Error creating transport:", error);
-            callback({ error: error.message });
-        }
-    });
-    
-    // Connect transport
-    socket.on("connectTransport", async (data, callback) => {
-        try {
-            const { roomId, transportId, dtlsParameters } = data;
-            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
-            await voiceServer.connectTransport(room, transportId, dtlsParameters);
-            callback({ success: true });
-        } catch (error) {
-            console.error("Error connecting transport:", error);
-            callback({ error: error.message });
-        }
-    });
-    
-    // Produce audio
-    socket.on("produce", async (data, callback) => {
-        try {
-            const { roomId, transportId, rtpParameters, userId } = data;
-            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
-            const result = await voiceServer.createProducer(room, transportId, rtpParameters, userId);
-            
-            // Notify other participants
-            socket.to(`voice_${roomId}`).emit("newProducer", {
-                producerId: result.id,
-                userId,
-            });
-            
-            callback({ id: result.id, newConsumers: result.newConsumers });
-        } catch (error) {
-            console.error("Error producing:", error);
-            callback({ error: error.message });
-        }
-    });
-    
-    // Create consumers for new participant
-    socket.on("createConsumers", async (data, callback) => {
-        try {
-            const { roomId, transportId, userId } = data;
-            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
-            const consumers = await voiceServer.createConsumersForParticipant(room, transportId, userId);
-            callback({ consumers });
-        } catch (error) {
-            console.error("Error creating consumers:", error);
-            callback({ error: error.message });
-        }
-    });
-    
-    // Close producer
-    socket.on("closeProducer", async (data) => {
-        try {
-            const { roomId, producerId, userId } = data;
-            const room = await voiceServer.getOrCreateVoiceRoom(roomId);
-            await voiceServer.closeProducer(room, producerId, userId);
-            
-            // Notify other participants
-            socket.to(`voice_${roomId}`).emit("producerClosed", { producerId, userId });
-        } catch (error) {
-            console.error("Error closing producer:", error);
-        }
-    });
-    
-    // Join voice room
+    // Join voice room (WebRTC Native - simplified)
     socket.on("joinVoiceRoom", async (data) => {
         try {
             const { roomId, userId } = data;
             socket.join(`voice_${roomId}`);
             
-            const participants = voiceServer.getRoomParticipants(roomId);
-            socket.emit("voiceRoomJoined", { roomId, participants });
+            // Get current participants from Socket.IO rooms
+            const roomSockets = await io.in(`voice_${roomId}`).fetchSockets();
+            const participants = roomSockets
+                .map(s => s.userId)
+                .filter(id => id && id !== userId); // Exclude current user
             
-            // Notify others
-            socket.to(`voice_${roomId}`).emit("userJoinedVoice", { userId });
+            // Extract channel ID from roomId (format: "channel_15")
+            const channelId = roomId.replace('channel_', '');
+            
+            socket.emit("voiceRoomJoined", { 
+                roomId, 
+                participants: participants.map(id => ({ userId: id })),
+                channelId: parseInt(channelId)
+            });
+            
+            // Notify others that this user joined
+            socket.to(`voice_${roomId}`).emit("userJoinedVoice", { 
+                userId,
+                channelId: parseInt(channelId)
+            });
+            
+            console.log(`User ${userId} joined voice room ${roomId}`);
         } catch (error) {
             console.error("Error joining voice room:", error);
         }
     });
     
-    // Leave voice room
+    // Leave voice room (WebRTC Native - simplified)
     socket.on("leaveVoiceRoom", async (data) => {
         try {
-            const { roomId, transportId, userId } = data;
+            const { roomId, userId } = data;
             
-            if (transportId) {
-                const room = await voiceServer.getOrCreateVoiceRoom(roomId);
-                await voiceServer.closeTransport(room, transportId, userId);
-            }
+            // Extract channel ID from roomId (format: "channel_15")
+            const channelId = roomId.replace('channel_', '');
             
             socket.leave(`voice_${roomId}`);
-            socket.to(`voice_${roomId}`).emit("userLeftVoice", { userId });
+            socket.to(`voice_${roomId}`).emit("userLeftVoice", { 
+                userId,
+                channelId: parseInt(channelId)
+            });
+            
+            console.log(`User ${userId} left voice room ${roomId}`);
         } catch (error) {
             console.error("Error leaving voice room:", error);
         }
     });
     
+    // Handle voice mute status (WebRTC Native)
+    socket.on("voice_mute_status", (data) => {
+        const { roomId, userId, muted } = data;
+        socket.to(`voice_${roomId}`).emit("voice_mute_status", { userId, muted });
+    });
+    
+    // Handle screen share start
+    socket.on("screen_share_start", (data) => {
+        const { roomId, userId, channelId } = data;
+        socket.to(`voice_${roomId}`).emit("screen_share_start", { 
+            userId, 
+            channelId: parseInt(channelId) 
+        });
+        console.log(`User ${userId} started screen sharing in channel ${channelId}`);
+    });
+    
+    // Handle screen share stop
+    socket.on("screen_share_stop", (data) => {
+        const { roomId, userId, channelId } = data;
+        socket.to(`voice_${roomId}`).emit("screen_share_stop", { 
+            userId, 
+            channelId: parseInt(channelId) 
+        });
+        console.log(`User ${userId} stopped screen sharing in channel ${channelId}`);
+    });
+    
+    // Handle screen share WebRTC signaling
+    socket.on("screen_share_offer", (data) => {
+        const { targetUserId, offer, roomId } = data;
+        socket.to(`voice_${roomId}`).emit("screen_share_offer", {
+            userId: socket.userId,
+            targetUserId,
+            offer
+        });
+    });
+    
+    socket.on("screen_share_answer", (data) => {
+        const { targetUserId, answer, roomId } = data;
+        socket.to(`voice_${roomId}`).emit("screen_share_answer", {
+            userId: socket.userId,
+            targetUserId,
+            answer
+        });
+    });
+    
+    socket.on("screen_share_ice_candidate", (data) => {
+        const { targetUserId, candidate, roomId } = data;
+        socket.to(`voice_${roomId}`).emit("screen_share_ice_candidate", {
+            userId: socket.userId,
+            targetUserId,
+            candidate
+        });
+    });
+    
+    // Handle voice deafen status (WebRTC Native)
+    socket.on("voice_deafen_status", (data) => {
+        const { roomId, userId, deafened } = data;
+        socket.to(`voice_${roomId}`).emit("voice_deafen_status", { userId, deafened });
+    });
+    
+    // Handle voice speaking indicator (WebRTC Native)
+    socket.on("voice_speaking", (data) => {
+        const { roomId, userId } = data;
+        socket.to(`voice_${roomId}`).emit("voice_speaking", { userId });
+    });
+    
     // Handle user status updates
     socket.on("user_status_update", (data) => {
         const { userId, status } = data;
-        db.run("UPDATE users SET status = ? WHERE id = ?", [status, userId], (err) => {
+        
+        // Normalize 'away' to 'idle'
+        let normalizedStatus = status;
+        if (status === 'away') {
+            normalizedStatus = 'idle';
+        }
+        
+        db.run("UPDATE users SET status = ? WHERE id = ?", [normalizedStatus, userId], (err) => {
             if (!err) {
-                io.emit("user_status_updated", { userId, status });
+                // For invisible users, broadcast as offline to others
+                const broadcastStatus = normalizedStatus === 'invisible' ? 'offline' : normalizedStatus;
+                io.emit("user_status_updated", { userId, status: broadcastStatus });
             }
         });
     });
@@ -600,11 +698,13 @@ io.on("connection", (socket) => {
         if (data.channelId) {
             query = `
                 SELECT m.*, 
+                u_sender.status as sender_status,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
                  WHERE r.message_id = m.id) as reactions
                 FROM messages m 
+                LEFT JOIN users u_sender ON m.sender_id = u_sender.id
                 WHERE m.channel_id = ? AND m.pinned = 1 AND m.deleted = 0
                 ORDER BY m.date DESC
             `;
@@ -612,11 +712,13 @@ io.on("connection", (socket) => {
         } else if (data.recipientId) {
             query = `
                 SELECT m.*, 
+                u_sender.status as sender_status,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
                  WHERE r.message_id = m.id) as reactions
                 FROM messages m 
+                LEFT JOIN users u_sender ON m.sender_id = u_sender.id
                 WHERE ((m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)) 
                    OR (m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)))
                    AND m.pinned = 1 AND m.deleted = 0
@@ -653,6 +755,24 @@ io.on("connection", (socket) => {
     socket.on("user_login", (userId) => {
         socket.join(`user_${userId}`);
         console.log(`User ${userId} joined personal room`);
+        
+        // Set user status to online on login (unless they have invisible or offline set manually)
+        db.get("SELECT status FROM users WHERE id = ?", [userId], (err, user) => {
+            if (!err && user) {
+                // Only auto-set to online if current status is offline
+                // If user has invisible or offline set, keep it
+                if (user.status === 'offline' || !user.status) {
+                    db.run("UPDATE users SET status = ? WHERE id = ?", ['online', userId], (err) => {
+                        if (!err) {
+                            io.emit("user_status_updated", { userId, status: 'online' });
+                        }
+                    });
+                }
+            }
+        });
+        
+        // Store userId in socket for disconnect handling
+        socket.userId = userId;
     });
 
     socket.on("delete_channel", (channelId) => {
@@ -713,6 +833,7 @@ io.on("connection", (socket) => {
             // Load messages before a specific message ID
             query = `
                 SELECT m.*, 
+                u_sender.status as sender_status,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
@@ -720,6 +841,7 @@ io.on("connection", (socket) => {
                 rm.username as reply_username,
                 rm.message as reply_message
                 FROM messages m 
+                LEFT JOIN users u_sender ON m.sender_id = u_sender.id
                 LEFT JOIN messages rm ON m.reply_to_id = rm.id
                 WHERE m.channel_id = ? AND m.id < ?
                 ORDER BY m.date DESC 
@@ -730,6 +852,7 @@ io.on("connection", (socket) => {
             // Load latest messages
             query = `
                 SELECT m.*, 
+                u_sender.status as sender_status,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
@@ -737,6 +860,7 @@ io.on("connection", (socket) => {
                 rm.username as reply_username,
                 rm.message as reply_message
                 FROM messages m 
+                LEFT JOIN users u_sender ON m.sender_id = u_sender.id
                 LEFT JOIN messages rm ON m.reply_to_id = rm.id
                 WHERE m.channel_id = ? 
                 ORDER BY m.date DESC 
@@ -806,6 +930,7 @@ io.on("connection", (socket) => {
             // Load messages before a specific message ID
             query = `
                 SELECT m.*, 
+                u_sender.status as sender_status,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
@@ -813,6 +938,7 @@ io.on("connection", (socket) => {
                 rm.username as reply_username,
                 rm.message as reply_message
                 FROM messages m 
+                LEFT JOIN users u_sender ON m.sender_id = u_sender.id
                 LEFT JOIN messages rm ON m.reply_to_id = rm.id
                 WHERE ((m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)) 
                    OR (m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)))
@@ -825,6 +951,7 @@ io.on("connection", (socket) => {
             // Load latest messages
             query = `
                 SELECT m.*, 
+                u_sender.status as sender_status,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
@@ -832,6 +959,7 @@ io.on("connection", (socket) => {
                 rm.username as reply_username,
                 rm.message as reply_message
                 FROM messages m 
+                LEFT JOIN users u_sender ON m.sender_id = u_sender.id
                 LEFT JOIN messages rm ON m.reply_to_id = rm.id
                 WHERE (m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)) 
                    OR (m.recipient_id = ? AND m.username = (SELECT username FROM users WHERE id = ?)) 
@@ -1054,80 +1182,87 @@ io.on("connection", (socket) => {
             const reply_username = replyRow ? replyRow.username : null;
             const reply_message = replyRow ? replyRow.message : null;
 
-            if (recipient_id) {
-                // Private Message
-                db.run(
-                    "INSERT INTO messages (username, message, recipient_id, sender_id, reply_to_id, file_path, file_name, file_type, file_size, files_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [username, message, recipient_id, sender_id, reply_to_id, file_path || null, file_name || null, file_type || null, file_size || null, files_json],
-                    function (err) {
-                        if (!err) {
-                            const savedMessage = {
-                                id: this.lastID,
-                                username,
-                                message,
-                                recipient_id,
-                                sender_id,
-                                reply_to_id,
-                                reply_username,
-                                reply_message,
-                                file_path: file_path || null,
-                                file_name: file_name || null,
-                                file_type: file_type || null,
-                                file_size: file_size || null,
-                                files_json: files_json,
-                                files: files_json ? JSON.parse(files_json) : (file_path ? [{
-                                    file_path,
-                                    file_name,
-                                    file_type,
-                                    file_size
-                                }] : null),
-                                date: new Date().toISOString()
-                            };
-                            io.to(`user_${recipient_id}`).emit("receive_message", savedMessage);
-                            io.to(`user_${sender_id}`).emit("receive_message", savedMessage);
+            // Get sender status
+            db.get("SELECT status FROM users WHERE id = ?", [sender_id], (err, sender) => {
+                const sender_status = sender ? sender.status : 'online';
 
-                            // Notify for new conversation
-                            io.to(`user_${recipient_id}`).emit("new_conversation", { id: sender_id, username: username });
-                            io.to(`user_${sender_id}`).emit("new_conversation", { id: recipient_id, username: "User" }); // Ideally we fetch recipient username
+                if (recipient_id) {
+                    // Private Message
+                    db.run(
+                        "INSERT INTO messages (username, message, recipient_id, sender_id, reply_to_id, file_path, file_name, file_type, file_size, files_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [username, message, recipient_id, sender_id, reply_to_id, file_path || null, file_name || null, file_type || null, file_size || null, files_json],
+                        function (err) {
+                            if (!err) {
+                                const savedMessage = {
+                                    id: this.lastID,
+                                    username,
+                                    message,
+                                    recipient_id,
+                                    sender_id,
+                                    sender_status: sender_status === 'invisible' ? 'offline' : sender_status,
+                                    reply_to_id,
+                                    reply_username,
+                                    reply_message,
+                                    file_path: file_path || null,
+                                    file_name: file_name || null,
+                                    file_type: file_type || null,
+                                    file_size: file_size || null,
+                                    files_json: files_json,
+                                    files: files_json ? JSON.parse(files_json) : (file_path ? [{
+                                        file_path,
+                                        file_name,
+                                        file_type,
+                                        file_size
+                                    }] : null),
+                                    date: new Date().toISOString()
+                                };
+                                io.to(`user_${recipient_id}`).emit("receive_message", savedMessage);
+                                io.to(`user_${sender_id}`).emit("receive_message", savedMessage);
+
+                                // Notify for new conversation
+                                io.to(`user_${recipient_id}`).emit("new_conversation", { id: sender_id, username: username });
+                                io.to(`user_${sender_id}`).emit("new_conversation", { id: recipient_id, username: "User" }); // Ideally we fetch recipient username
+                            }
                         }
-                    }
-                );
-            } else {
-                // Channel Message
-                db.run(
-                    "INSERT INTO messages (username, message, channel_id, sender_id, reply_to_id, file_path, file_name, file_type, file_size, files_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [username || "Anonyme", message, channel_id, sender_id, reply_to_id, file_path || null, file_name || null, file_type || null, file_size || null, files_json],
-                    function (err) {
-                        if (!err) {
-                            const savedMessage = {
-                                id: this.lastID,
-                                username: username || "Anonyme",
-                                message,
-                                channel_id,
-                                sender_id,
-                                reply_to_id,
-                                reply_username,
-                                reply_message,
-                                file_path: file_path || null,
-                                file_name: file_name || null,
-                                file_type: file_type || null,
-                                file_size: file_size || null,
-                                files_json: files_json,
-                                files: files_json ? JSON.parse(files_json) : (file_path ? [{
-                                    file_path,
-                                    file_name,
-                                    file_type,
-                                    file_size
-                                }] : null),
-                                edited: false,
-                                deleted: false,
-                                date: new Date().toISOString()
-                            };
-                            io.to(`channel_${channel_id}`).emit("receive_message", savedMessage);
+                    );
+                } else {
+                    // Channel Message
+                    db.run(
+                        "INSERT INTO messages (username, message, channel_id, sender_id, reply_to_id, file_path, file_name, file_type, file_size, files_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [username || "Anonyme", message, channel_id, sender_id, reply_to_id, file_path || null, file_name || null, file_type || null, file_size || null, files_json],
+                        function (err) {
+                            if (!err) {
+                                const savedMessage = {
+                                    id: this.lastID,
+                                    username: username || "Anonyme",
+                                    message,
+                                    channel_id,
+                                    sender_id,
+                                    sender_status: sender_status === 'invisible' ? 'offline' : sender_status,
+                                    reply_to_id,
+                                    reply_username,
+                                    reply_message,
+                                    file_path: file_path || null,
+                                    file_name: file_name || null,
+                                    file_type: file_type || null,
+                                    file_size: file_size || null,
+                                    files_json: files_json,
+                                    files: files_json ? JSON.parse(files_json) : (file_path ? [{
+                                        file_path,
+                                        file_name,
+                                        file_type,
+                                        file_size
+                                    }] : null),
+                                    edited: false,
+                                    deleted: false,
+                                    date: new Date().toISOString()
+                                };
+                                io.to(`channel_${channel_id}`).emit("receive_message", savedMessage);
+                            }
                         }
-                    }
-                );
-            }
+                    );
+                }
+            });
         });
     });
 
@@ -1175,18 +1310,29 @@ io.on("connection", (socket) => {
     socket.on("disconnect", async () => {
         console.log("User disconnected:", socket.id);
         
+        // Update user status to offline on disconnect
+        if (socket.userId) {
+            db.get("SELECT status FROM users WHERE id = ?", [socket.userId], (err, user) => {
+                if (!err && user) {
+                    // Only set to offline if not already invisible (invisible users stay invisible)
+                    if (user.status !== 'invisible') {
+                        db.run("UPDATE users SET status = ? WHERE id = ?", ['offline', socket.userId], (err) => {
+                            if (!err) {
+                                io.emit("user_status_updated", { userId: socket.userId, status: 'offline' });
+                            }
+                        });
+                    }
+                }
+            });
+        }
+        
         // Clean up voice connections on disconnect
         // This will be handled by the leaveVoiceRoom event
     });
 });
 
-// Initialize Mediasoup before starting server
-voiceServer.initializeMediasoup().then(() => {
-    server.listen(3000, () => {
-        console.log("Server running on http://localhost:3000");
-        console.log("Mediasoup voice server initialized");
-    });
-}).catch(err => {
-    console.error("Failed to initialize Mediasoup:", err);
-    process.exit(1);
+// Start server (WebRTC Native - no mediasoup initialization needed)
+server.listen(3000, () => {
+    console.log("Server running on http://localhost:3000");
+    console.log("Voice channels using WebRTC native");
 });

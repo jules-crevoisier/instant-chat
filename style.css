@@ -864,14 +864,16 @@ body {
     background-color: #10b981;
 }
 
+.status-indicator.idle,
 .status-indicator.away {
     background-color: #f59e0b;
 }
 
-.status-indicator.busy {
+.status-indicator.dnd {
     background-color: #ef4444;
 }
 
+.status-indicator.invisible,
 .status-indicator.offline {
     background-color: hsl(var(--muted-foreground));
 }
@@ -1094,6 +1096,12 @@ body {
     margin-bottom: 0.25rem;
 }
 
+.msg-header .avatar-container {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
 .msg-avatar {
     width: 32px;
     height: 32px;
@@ -1106,6 +1114,17 @@ body {
     font-weight: 600;
     font-size: 0.875rem;
     flex-shrink: 0;
+}
+
+.msg-header .status-indicator {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid hsl(var(--background));
+    z-index: 1;
 }
 
 .msg .pseudo {
@@ -2116,92 +2135,1118 @@ emoji-picker {
     font-style: italic;
 }
 
-.voice-controls {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background-color: hsl(var(--background));
+/* Voice Channel Panel (Discord-style) */
+.voice-channel-panel {
     border-top: 1px solid hsl(var(--border));
+    margin-top: auto;
+    background-color: hsl(var(--card));
+}
+
+.voice-channel-panel.hidden {
+    display: none;
+}
+
+.voice-participants-list {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 0.5rem 0;
+}
+
+.voice-participants-empty {
+    text-align: center;
+    color: hsl(var(--muted-foreground));
     padding: 1rem;
-    z-index: 100;
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+    font-size: 0.875rem;
 }
 
-.voice-controls-header {
+.voice-participant-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-    font-weight: 600;
-}
-
-.voice-participants {
-    display: flex;
-    flex-wrap: wrap;
     gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    margin: 0 0.5rem;
+    border-radius: 0.375rem;
+    transition: background-color 0.15s;
+    cursor: pointer;
 }
 
-.voice-participant {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    border-radius: var(--radius);
-    background-color: hsl(var(--muted));
-    transition: background-color 0.2s;
+.voice-participant-item:hover {
+    background-color: hsl(var(--accent) / 0.5);
 }
 
-.voice-participant.speaking {
-    background-color: hsl(var(--primary) / 0.2);
-    border: 2px solid hsl(var(--primary));
+.voice-participant-item.speaking {
+    background-color: hsl(var(--accent));
+}
+
+.voice-participant-item.self {
+    opacity: 0.9;
 }
 
 .voice-participant-avatar {
     position: relative;
-    width: 32px;
-    height: 32px;
+    flex-shrink: 0;
 }
 
-.voice-participant-avatar .avatar {
+.voice-participant-avatar-img {
     width: 32px;
     height: 32px;
     font-size: 0.875rem;
 }
 
-.speaking-indicator {
-    position: absolute;
+.voice-participant-avatar .status-indicator {
+    width: 10px;
+    height: 10px;
+    border: 2px solid hsl(var(--card));
     bottom: -2px;
     right: -2px;
-    width: 12px;
-    height: 12px;
-    background-color: #10b981;
-    border-radius: 50%;
-    border: 2px solid hsl(var(--background));
-    animation: pulse 1.5s ease infinite;
 }
 
-@keyframes pulse {
+.speaking-ring {
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    border: 2px solid #43b581;
+    border-radius: 50%;
+    animation: speaking-pulse 1.5s ease infinite;
+}
+
+@keyframes speaking-pulse {
     0%, 100% {
         opacity: 1;
         transform: scale(1);
     }
     50% {
-        opacity: 0.7;
+        opacity: 0.5;
         transform: scale(1.1);
     }
+}
+
+.voice-participant-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    flex: 1;
+    min-width: 0;
 }
 
 .voice-participant-name {
     font-size: 0.875rem;
     font-weight: 500;
+    color: hsl(var(--foreground));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.no-participants {
+.voice-participant-status {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.voice-participant-status.speaking {
+    color: #43b581;
+}
+
+.voice-participant-status.muted {
+    color: hsl(var(--destructive));
+}
+
+.voice-participant-status.deafened {
+    color: hsl(var(--destructive));
+}
+
+/* Voice Controls Bar (Discord-style bottom bar) */
+.voice-controls-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    background-color: hsl(var(--secondary));
+    border-top: 1px solid hsl(var(--border));
+    gap: 0.75rem;
+}
+
+.voice-controls-bar.hidden {
+    display: none;
+}
+
+.voice-controls-user {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.voice-avatar-container {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.voice-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 0.875rem;
+}
+
+.voice-status-indicator {
+    width: 10px;
+    height: 10px;
+    border: 2px solid hsl(var(--secondary));
+    bottom: -2px;
+    right: -2px;
+}
+
+.voice-controls-user-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.voice-controls-username {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.voice-controls-status-text {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.voice-controls-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.voice-control-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 0.375rem;
+    border: none;
+    background-color: transparent;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+}
+
+.voice-control-btn:hover {
+    background-color: hsl(var(--accent));
+    color: hsl(var(--foreground));
+}
+
+.voice-control-btn.active {
+    background-color: hsl(var(--destructive));
+    color: white;
+}
+
+.voice-control-btn.danger {
+    background-color: hsl(var(--destructive));
+    color: white;
+}
+
+.voice-control-btn.danger:hover {
+    background-color: hsl(var(--destructive) / 0.8);
+}
+
+.voice-control-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.voice-control-btn svg.hidden {
+    display: none;
+}
+
+/* Voice channel active indicator */
+.channel-item.voice-active {
+    background-color: hsl(var(--accent) / 0.3);
+}
+
+.channel-item.voice-active .channel-content {
+    color: hsl(var(--primary));
+}
+
+.voice-active-indicator {
+    color: #43b581;
+    font-size: 0.75rem;
+    margin-left: 0.25rem;
+    animation: pulse 2s ease infinite;
+}
+
+.voice-badge {
+    font-size: 0.7rem;
+    padding: 0.125rem 0.375rem;
+    background-color: hsl(var(--muted));
+    border-radius: 0.25rem;
+    color: hsl(var(--muted-foreground));
+    margin-left: 0.25rem;
+}
+
+.voice-participants-count {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    margin-left: 0.5rem;
+    font-weight: 500;
+}
+
+.channel-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Voice Channel Header */
+.voice-channel-header {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background-color: hsl(var(--card));
+    border-bottom: 1px solid hsl(var(--border));
+    gap: 1rem;
+}
+
+.voice-header-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+}
+
+.voice-header-icon {
+    font-size: 1.5rem;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: hsl(var(--muted));
+    border-radius: 0.5rem;
+}
+
+.voice-header-info h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    margin: 0;
+}
+
+.voice-header-desc {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.voice-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Voice Channel View (Main Grid) */
+.voice-channel-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background-color: hsl(var(--background));
+    position: relative;
+}
+
+.voice-channel-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1.5rem;
+    padding: 2rem;
+    overflow-y: auto;
+    align-content: start;
+}
+
+.voice-channel-grid.hidden {
+    display: none;
+}
+
+.voice-channel-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
     text-align: center;
     color: hsl(var(--muted-foreground));
-    padding: 1rem;
+}
+
+.voice-channel-empty.hidden {
+    display: none;
+}
+
+.voice-empty-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.voice-channel-empty h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    margin-bottom: 0.5rem;
+}
+
+.voice-channel-empty p {
     font-size: 0.875rem;
+    color: hsl(var(--muted-foreground));
+}
+
+/* Voice Participant Card (Grid Item) */
+.voice-participant-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem 1rem;
+    background-color: hsl(var(--card));
+    border-radius: 0.75rem;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.voice-participant-card:hover {
+    background-color: hsl(var(--accent) / 0.3);
+    border-color: hsl(var(--border));
+    transform: translateY(-2px);
+}
+
+.voice-participant-card.speaking {
+    border-color: #43b581;
+    background-color: hsl(var(--accent) / 0.5);
+    box-shadow: 0 0 20px rgba(67, 181, 129, 0.3);
+}
+
+.voice-participant-card.self {
+    opacity: 0.95;
+}
+
+.voice-participant-card-avatar-wrapper {
+    margin-bottom: 1rem;
+    position: relative;
+}
+
+.voice-participant-card-avatar-container {
+    position: relative;
+}
+
+.voice-participant-card-avatar {
+    width: 80px;
+    height: 80px;
+    font-size: 2rem;
+    border-radius: 50%;
+}
+
+.voice-participant-card-status {
+    width: 20px;
+    height: 20px;
+    border: 3px solid hsl(var(--card));
+    bottom: 2px;
+    right: 2px;
+    position: absolute;
+}
+
+.voice-speaking-ring {
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    right: -4px;
+    bottom: -4px;
+    border: 3px solid #43b581;
+    border-radius: 50%;
+    animation: voice-speaking-pulse 1.5s ease infinite;
+    pointer-events: none;
+}
+
+@keyframes voice-speaking-pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.05);
+    }
+}
+
+.voice-participant-card-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    width: 100%;
+}
+
+.voice-participant-card-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.voice-participant-card-status-text {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    text-align: center;
+}
+
+.voice-participant-card-status-text.speaking {
+    color: #43b581;
+    font-weight: 500;
+}
+
+.voice-participant-card-status-text.muted,
+.voice-participant-card-status-text.deafened {
+    color: hsl(var(--destructive));
+}
+
+/* Responsive grid */
+@media (max-width: 768px) {
+    .voice-channel-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 1rem;
+        padding: 1rem;
+    }
+    
+    .voice-participant-card-avatar {
+        width: 60px;
+        height: 60px;
+        font-size: 1.5rem;
+    }
+    
+    .voice-participant-card {
+        padding: 1rem 0.75rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .voice-channel-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 0.75rem;
+        padding: 0.75rem;
+    }
+    
+    .voice-participant-card-avatar {
+        width: 50px;
+        height: 50px;
+        font-size: 1.25rem;
+    }
+}
+
+/* Voice Main Controls (in main view) */
+.voice-main-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    background-color: hsl(var(--card));
+    border-top: 1px solid hsl(var(--border));
+    gap: 1rem;
+}
+
+.voice-main-controls-user {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.voice-main-avatar-container {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.voice-main-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 1.25rem;
+}
+
+.voice-main-status-indicator {
+    width: 16px;
+    height: 16px;
+    border: 2px solid hsl(var(--card));
+    bottom: 0;
+    right: 0;
+    position: absolute;
+}
+
+.voice-main-user-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.voice-main-username {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.voice-main-status-text {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.voice-main-controls-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.voice-main-control-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 0.5rem;
+    background-color: hsl(var(--muted));
+    color: hsl(var(--foreground));
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.voice-main-control-btn:hover {
+    background-color: hsl(var(--accent));
+    transform: translateY(-1px);
+}
+
+.voice-main-control-btn:active {
+    transform: translateY(0);
+}
+
+.voice-main-control-btn.danger {
+    background-color: hsl(var(--destructive) / 0.1);
+    color: hsl(var(--destructive));
+}
+
+.voice-main-control-btn.danger:hover {
+    background-color: hsl(var(--destructive) / 0.2);
+}
+
+.voice-main-control-btn svg {
+    width: 24px;
+    height: 24px;
+}
+
+.voice-main-control-btn svg.hidden {
+    display: none;
+}
+
+/* Voice Settings Modal */
+.voice-settings-content {
+    max-width: 600px;
+    width: 90%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.voice-settings-body {
+    overflow-y: auto;
+    padding: 1.5rem;
+    flex: 1;
+}
+
+.voice-settings-section {
+    margin-bottom: 2rem;
+}
+
+.voice-settings-section:last-child {
+    margin-bottom: 0;
+}
+
+.voice-settings-section h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    margin-bottom: 1rem;
+}
+
+.voice-settings-field {
+    margin-bottom: 1.25rem;
+}
+
+.voice-settings-field:last-child {
+    margin-bottom: 0;
+}
+
+.voice-settings-field label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+    margin-bottom: 0.5rem;
+}
+
+.voice-settings-field label span {
+    float: right;
+    color: hsl(var(--muted-foreground));
+    font-weight: 400;
+}
+
+.voice-settings-select {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    background-color: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    color: hsl(var(--foreground));
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.voice-settings-select:hover {
+    border-color: hsl(var(--ring));
+}
+
+.voice-settings-select:focus {
+    outline: none;
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+}
+
+.voice-settings-slider {
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: hsl(var(--muted));
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.voice-settings-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: hsl(var(--primary));
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.voice-settings-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+}
+
+.voice-settings-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: hsl(var(--primary));
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+}
+
+.voice-settings-slider::-moz-range-thumb:hover {
+    transform: scale(1.1);
+}
+
+.voice-settings-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: hsl(var(--foreground));
+}
+
+.voice-settings-checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: hsl(var(--primary));
+}
+
+.voice-test-indicator {
+    width: 100%;
+    height: 8px;
+    background-color: hsl(var(--muted));
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.voice-test-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #43b581, #faa61a, #f04747);
+    border-radius: 4px;
+    transition: width 0.1s ease;
+}
+
+.voice-test-hint {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    margin: 0;
+    text-align: center;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid hsl(var(--border));
+    background-color: hsl(var(--card));
+}
+
+.btn-primary,
+.btn-secondary {
+    padding: 0.625rem 1.25rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+}
+
+.btn-primary {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+
+.btn-primary:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background-color: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+}
+
+.btn-secondary:hover {
+    background-color: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+}
+
+/* Screen Share Container (Discord-style) */
+.screen-share-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: hsl(var(--background));
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+}
+
+.screen-share-container.hidden {
+    display: none;
+}
+
+.screen-share-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background-color: hsl(var(--card));
+    border-bottom: 1px solid hsl(var(--border));
+    min-height: 48px;
+    gap: 1rem;
+}
+
+.screen-share-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.screen-share-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
+.back-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.375rem;
+    background-color: transparent;
+    color: hsl(var(--muted-foreground));
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.back-btn:hover {
+    background-color: hsl(var(--accent));
+    color: hsl(var(--foreground));
+}
+
+.screen-share-user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.screen-share-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+}
+
+.screen-share-avatar-container {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.screen-share-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 0.875rem;
+}
+
+.screen-share-username {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.screen-share-status {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.screen-share-switcher {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    background-color: hsl(var(--muted));
+    border-radius: 0.375rem;
+}
+
+.screen-share-switcher.hidden {
+    display: none;
+}
+
+.screen-share-switcher .icon-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+}
+
+.screen-share-switcher .icon-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.screen-share-counter {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    min-width: 40px;
+    text-align: center;
+}
+
+.screen-share-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.screen-share-video-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #000;
+    overflow: hidden;
+    position: relative;
+}
+
+#screen-share-video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background-color: #000;
+}
+
+.screen-share-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.8);
+    z-index: 1;
+}
+
+.screen-share-overlay.hidden {
+    display: none;
+}
+
+.screen-share-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    color: hsl(var(--foreground));
+}
+
+.screen-share-loading.hidden {
+    display: none;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid hsl(var(--muted));
+    border-top-color: hsl(var(--primary));
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.screen-share-loading p {
+    font-size: 0.875rem;
+    color: hsl(var(--muted-foreground));
+    margin: 0;
+}
+
+/* Screen Share Grid (for multiple shares) */
+.screen-share-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+    overflow-y: auto;
+}
+
+.screen-share-grid.hidden {
+    display: none;
+}
+
+.voice-main-control-btn.active {
+    background-color: hsl(var(--destructive) / 0.2);
+    color: hsl(var(--destructive));
+}
+
+.voice-main-control-btn.active:hover {
+    background-color: hsl(var(--destructive) / 0.3);
+}
+
+/* Screen share indicator in participant cards */
+.voice-participant-card.screen-sharing {
+    border-color: #5865f2;
+    background-color: hsl(var(--accent) / 0.5);
+}
+
+.voice-participant-card.screen-sharing::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background-color: hsl(var(--primary));
+    border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.voice-participant-screen-share-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    z-index: 10;
+    opacity: 1;
+    pointer-events: all;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.voice-participant-screen-share-btn:hover {
+    opacity: 1;
+}
+
+.voice-participant-screen-share-btn:hover {
+    background-color: hsl(var(--primary) / 0.9);
+    transform: scale(1.05);
+}
+
+.voice-participant-screen-share-btn:active {
+    transform: scale(0.95);
+}
+
+.voice-participant-screen-share-btn svg {
+    width: 18px;
+    height: 18px;
 }
 
 .icon-btn.danger {
