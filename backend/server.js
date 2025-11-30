@@ -130,9 +130,15 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server, {
     cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
+        origin: process.env.CORS_ORIGIN || "*",
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    // Configuration pour la production (reverse proxy)
+    allowEIO3: true,
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000
 });
 
 const db = require("./database");
@@ -1348,8 +1354,14 @@ io.on("connection", (socket) => {
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-server.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+// Listen on 0.0.0.0 to accept connections from outside (important for VPS)
+const HOST = process.env.HOST || '0.0.0.0';
+
+server.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST}:${PORT}`);
     console.log(`Environment: ${NODE_ENV}`);
     console.log("Voice channels using WebRTC native");
+    if (NODE_ENV === 'production') {
+        console.log(`Socket.IO available at: http://${HOST}:${PORT}/socket.io/`);
+    }
 });
