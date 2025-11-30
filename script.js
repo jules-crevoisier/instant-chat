@@ -1,7 +1,12 @@
-const socket = io("http://localhost:3000");
+// Configuration - Auto-detect environment
+// Check if running from file:// protocol (local development) or localhost
+const isFileProtocol = window.location.protocol === 'file:';
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || isFileProtocol;
+const BACKEND_URL = isLocalhost ? 'http://localhost:3000' : window.location.origin;
+const API_BASE_URL = BACKEND_URL;
 
-// Configuration
-const API_BASE_URL = "http://localhost:3000";
+// Initialize Socket.IO connection
+const socket = io(BACKEND_URL);
 
 // Icon helper functions (shadcn/ui style - Lucide icons)
 const Icons = {
@@ -374,12 +379,12 @@ async function handleLogin() {
     const username = loginUsernameInput.value.trim();
     const password = loginPasswordInput.value.trim();
     if (!username || !password) {
-        alert("Veuillez remplir tous les champs");
+        toast.warning("Champs requis", "Veuillez remplir tous les champs");
         return;
     }
 
     try {
-        const res = await fetch("http://localhost:3000/api/login", {
+        const res = await fetch(`${API_BASE_URL}/api/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, password })
@@ -388,11 +393,11 @@ async function handleLogin() {
         if (res.ok) {
             login(data);
         } else {
-            alert(data.error || "Erreur de connexion");
+            toast.error("Erreur de connexion", data.error || "Une erreur est survenue lors de la connexion");
         }
     } catch (e) {
         console.error(e);
-        alert("Erreur de connexion");
+        toast.error("Erreur de connexion", "Une erreur est survenue. Veuillez réessayer.");
     }
 }
 
@@ -410,24 +415,24 @@ async function handleRegister() {
 
     // Validation
     if (!username || !password || !passwordConfirm) {
-        alert("Veuillez remplir tous les champs");
+        toast.warning("Champs requis", "Veuillez remplir tous les champs");
         return;
     }
 
     if (password !== passwordConfirm) {
-        alert("Les mots de passe ne correspondent pas");
+        toast.error("Mots de passe différents", "Les mots de passe ne correspondent pas");
         registerPasswordConfirmInput.focus();
         return;
     }
 
     if (password.length < 4) {
-        alert("Le mot de passe doit contenir au moins 4 caractères");
+        toast.error("Mot de passe trop court", "Le mot de passe doit contenir au moins 4 caractères");
         registerPasswordInput.focus();
         return;
     }
 
     try {
-        const res = await fetch("http://localhost:3000/api/register", {
+        const res = await fetch(`${API_BASE_URL}/api/register`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, password })
@@ -436,11 +441,11 @@ async function handleRegister() {
         if (res.ok) {
             login(data);
         } else {
-            alert(data.error || "Erreur lors de l'inscription");
+            toast.error("Erreur d'inscription", data.error || "Une erreur est survenue lors de l'inscription");
         }
     } catch (e) {
         console.error(e);
-        alert("Erreur de connexion");
+        toast.error("Erreur de connexion", "Une erreur est survenue. Veuillez réessayer.");
     }
 }
 
@@ -801,14 +806,21 @@ socket.on("receive_message", (msg) => {
         // Check for mention
         const isMentioned = msg.message.includes(`@${currentUser.username}`);
         const isDM = !!msg.recipient_id;
+        const channelName = currentChannel ? currentChannel.name : 'Chat';
 
         if (isDM) {
+            // Show visual toast for DM
+            toast.info(`💬 Message de ${msg.username}`, truncateMessage(msg.message, 100));
+            // Also send browser notification
             sendNotification(`Message de ${msg.username}`, msg.message);
         } else if (isMentioned) {
+            // Show visual toast for mention
+            toast.warning(`@ Mentionné par ${msg.username}`, truncateMessage(msg.message, 100));
+            // Also send browser notification
             sendNotification(`Mentionné par ${msg.username}`, msg.message);
         } else if (document.hidden) {
             // Optional: notify for all channel messages if hidden
-            // sendNotification(`Nouveau message dans ${currentChannel ? currentChannel.name : 'Chat'}`, `${msg.username}: ${msg.message}`);
+            // sendNotification(`Nouveau message dans ${channelName}`, `${msg.username}: ${msg.message}`);
         }
     }
 });
@@ -886,7 +898,7 @@ function displayMessage(data, append = true) {
     
     // If user not in cache but we have sender_id, load it
     if (!userInfo && senderId) {
-        fetch(`http://localhost:3000/api/users/${senderId}`)
+        fetch(`${API_BASE_URL}/api/users/${senderId}`)
             .then(res => res.json())
             .then(user => {
                 if (!users.find(u => u.id === user.id)) {
@@ -1001,7 +1013,7 @@ function displayMessage(data, append = true) {
             
             if (!userProfileCard) {
                 console.error("❌ ERROR: userProfileCard element is null!");
-                alert("Erreur: La carte de profil n'a pas été trouvée dans le DOM");
+                toast.error("Erreur", "La carte de profil n'a pas été trouvée dans le DOM");
                 return false;
             }
             
@@ -1386,7 +1398,7 @@ async function sendMessage() {
             uploadedFiles = await uploadFiles(selectedFiles);
         } catch (e) {
             console.error("Erreur upload fichiers", e);
-            alert("Erreur lors de l'upload des fichiers: " + e.message);
+            toast.error("Erreur d'upload", "Erreur lors de l'upload des fichiers: " + e.message);
             return;
         }
     }
@@ -1668,12 +1680,12 @@ socket.on("message_deleted", (data) => {
 });
 
 socket.on("edit_message_error", (data) => {
-    alert(data.error || "Erreur lors de la modification du message");
+    toast.error("Erreur", data.error || "Erreur lors de la modification du message");
     cancelEditMessage();
 });
 
 socket.on("delete_message_error", (data) => {
-    alert(data.error || "Erreur lors de la suppression du message");
+    toast.error("Erreur", data.error || "Erreur lors de la suppression du message");
 });
 
 async function uploadFiles(files) {
@@ -1701,7 +1713,7 @@ async function uploadFiles(files) {
         const formData = new FormData();
         formData.append("file", file);
 
-        const promise = fetch("http://localhost:3000/api/upload", {
+        const promise = fetch(`${API_BASE_URL}/api/upload`, {
             method: "POST",
             body: formData
         })
@@ -1803,7 +1815,7 @@ function handleFileSelection(files) {
     // Check total number of files
     const totalFiles = selectedFiles.length + files.length;
     if (totalFiles > MAX_FILES_PER_UPLOAD) {
-        alert(`Vous ne pouvez pas sélectionner plus de ${MAX_FILES_PER_UPLOAD} fichiers à la fois`);
+        toast.warning("Trop de fichiers", `Vous ne pouvez pas sélectionner plus de ${MAX_FILES_PER_UPLOAD} fichiers à la fois`);
         return;
     }
 
@@ -1817,7 +1829,7 @@ function handleFileSelection(files) {
     });
 
     if (errors.length > 0) {
-        alert("Erreurs de validation:\n" + errors.join("\n"));
+        toast.error("Erreurs de validation", errors.join("\n"));
     }
 
     if (validFiles.length > 0) {
@@ -2143,7 +2155,7 @@ async function loadUserProfile() {
     if (!currentUser || !currentUser.token) return;
     
     try {
-        const res = await fetch("http://localhost:3000/api/me", {
+        const res = await fetch(`${API_BASE_URL}/api/me`, {
             headers: { "Authorization": `Bearer ${currentUser.token}` }
         });
         if (res.ok) {
@@ -2186,7 +2198,7 @@ async function openProfileModal() {
     if (!currentUser) return;
     
     try {
-        const res = await fetch("http://localhost:3000/api/me", {
+        const res = await fetch(`${API_BASE_URL}/api/me`, {
             headers: { "Authorization": `Bearer ${currentUser.token}` }
         });
         if (res.ok) {
@@ -2231,7 +2243,7 @@ async function openProfileModal() {
         }
     } catch (e) {
         console.error("Erreur chargement profil", e);
-        alert("Erreur lors du chargement du profil");
+        toast.error("Erreur", "Erreur lors du chargement du profil");
     }
 }
 
@@ -2298,7 +2310,7 @@ saveProfileBtn.addEventListener("click", async () => {
     const avatar = selectedEmoji || "";
     
     try {
-        const res = await fetch(`http://localhost:3000/api/users/${currentUser.id}/profile`, {
+        const res = await fetch(`${API_BASE_URL}/api/users/${currentUser.id}/profile`, {
             method: "PUT",
             headers: {
                 "Content-Type": "application/json",
@@ -2320,11 +2332,11 @@ saveProfileBtn.addEventListener("click", async () => {
             closeProfileModalFunc();
         } else {
             const error = await res.json();
-            alert(error.error || "Erreur lors de la sauvegarde");
+            toast.error("Erreur", error.error || "Erreur lors de la sauvegarde");
         }
     } catch (e) {
         console.error("Erreur sauvegarde profil", e);
-        alert("Erreur de connexion");
+        toast.error("Erreur de connexion", "Une erreur est survenue. Veuillez réessayer.");
     }
 });
 
@@ -2338,13 +2350,13 @@ function showUserProfileCard(userId, username, positionRect = null) {
     if (!userId) {
         console.error("❌ ERROR: userId is missing or falsy!");
         console.error("userId value:", userId, "type:", typeof userId);
-        alert("Erreur: ID utilisateur manquant");
+        toast.error("Erreur", "ID utilisateur manquant");
         return;
     }
-    
+
     if (!userProfileCard) {
         console.error("❌ ERROR: userProfileCard element is null!");
-        alert("Erreur: Élément de carte de profil introuvable");
+        toast.error("Erreur", "Élément de carte de profil introuvable");
         return;
     }
     
@@ -2372,9 +2384,9 @@ function showUserProfileCard(userId, username, positionRect = null) {
     }
     
     console.log("🌐 Fetching user profile from API...");
-    console.log("URL:", `http://localhost:3000/api/users/${userId}`);
+    console.log("URL:", `${API_BASE_URL}/api/users/${userId}`);
     
-    fetch(`http://localhost:3000/api/users/${userId}`)
+    fetch(`${API_BASE_URL}/api/users/${userId}`)
         .then(res => {
             console.log("📡 API Response received:", {
                 ok: res.ok,
@@ -2501,7 +2513,7 @@ function showUserProfileCard(userId, username, positionRect = null) {
                 stack: e.stack,
                 name: e.name
             });
-            alert("Impossible de charger le profil de l'utilisateur: " + e.message);
+            toast.error("Erreur", "Impossible de charger le profil de l'utilisateur: " + e.message);
         });
 }
 
@@ -2574,7 +2586,7 @@ async function checkSession() {
 
     try {
         // Show some loading state if you want, or just wait
-        const res = await fetch("http://localhost:3000/api/me", {
+        const res = await fetch(`${API_BASE_URL}/api/me`, {
             headers: { "Authorization": `Bearer ${token}` }
         });
 
@@ -2679,7 +2691,7 @@ function renderChannels() {
                 if (typeof joinVoiceChannel === 'function') {
                     joinVoiceChannel(ch);
                 } else {
-                    alert('Fonctionnalité vocale en cours de chargement...');
+                    toast.info('Chargement...', 'Fonctionnalité vocale en cours de chargement...');
                 }
             } else {
                 // Text channel
@@ -2861,7 +2873,7 @@ const btnNewDm = document.getElementById("btn-new-dm");
 btnNewDm.addEventListener("click", async () => {
     // Fetch all users to pick from
     try {
-        const res = await fetch("http://localhost:3000/api/users");
+        const res = await fetch(`${API_BASE_URL}/api/users`);
         const allUsers = await res.json();
 
         // Filter out current user
@@ -2970,7 +2982,7 @@ btnNewDm.addEventListener("click", async () => {
 
 async function loadChannels() {
     try {
-        const res = await fetch("http://localhost:3000/api/channels");
+        const res = await fetch(`${API_BASE_URL}/api/channels`);
         channels = await res.json();
         renderChannels();
         if (channels.length > 0 && !currentChannel && !currentRecipient) {
@@ -2984,13 +2996,13 @@ async function loadChannels() {
 async function loadConversations() {
     if (!currentUser) return;
     try {
-        const res = await fetch(`http://localhost:3000/api/conversations/${currentUser.id}`);
+        const res = await fetch(`${API_BASE_URL}/api/conversations/${currentUser.id}`);
         const conversations = await res.json();
         
         // Load full user profiles
         users = await Promise.all(conversations.map(async (user) => {
             try {
-                const profileRes = await fetch(`http://localhost:3000/api/users/${user.id}`);
+                const profileRes = await fetch(`${API_BASE_URL}/api/users/${user.id}`);
                 if (profileRes.ok) {
                     return await profileRes.json();
                 }
@@ -3013,7 +3025,7 @@ async function loadChannelMembers(channelId) {
     if (!channelId) return;
     
     try {
-        const res = await fetch(`http://localhost:3000/api/channels/${channelId}/members`);
+        const res = await fetch(`${API_BASE_URL}/api/channels/${channelId}/members`);
         if (res.ok) {
             channelMembers = await res.json();
             renderChannelMembers();
@@ -3651,6 +3663,125 @@ function clearNotificationBadge() {
     }
 }
 
+// --- TOAST NOTIFICATIONS ---
+
+const toastIcons = {
+    success: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"></polyline>
+    </svg>`,
+    error: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+    </svg>`,
+    warning: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+    </svg>`,
+    info: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+    </svg>`
+};
+
+/**
+ * Show a toast notification
+ * @param {string} title - Notification title
+ * @param {string} message - Notification message
+ * @param {string} type - Type: 'success', 'error', 'warning', 'info'
+ * @param {number} duration - Duration in milliseconds (default: 5000)
+ */
+function showToast(title, message = '', type = 'info', duration = 5000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const toastId = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    toast.id = toastId;
+    
+    // Set icon based on type
+    const icon = toastIcons[type] || toastIcons.info;
+    
+    // Build toast HTML
+    toast.innerHTML = `
+        <div class="toast-icon">${icon}</div>
+        <div class="toast-content">
+            <div class="toast-title">${escapeHtml(title)}</div>
+            ${message ? `<div class="toast-message">${escapeHtml(message)}</div>` : ''}
+        </div>
+        <button class="toast-close" aria-label="Fermer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+        <div class="toast-progress" style="animation-duration: ${duration}ms;"></div>
+    `;
+    
+    // Add close handler
+    const closeBtn = toast.querySelector('.toast-close');
+    const closeToast = () => {
+        toast.classList.add('slide-out');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    };
+    
+    closeBtn.addEventListener('click', closeToast);
+    
+    // Add to container
+    container.appendChild(toast);
+    
+    // Auto remove after duration
+    if (duration > 0) {
+        setTimeout(closeToast, duration);
+    }
+    
+    // Play sound for important notifications
+    if (type === 'error' || type === 'warning') {
+        const sound = createNotificationSound();
+        if (sound) {
+            sound.play().catch(e => console.log('Could not play notification sound:', e));
+        }
+    }
+    
+    return toastId;
+}
+
+/**
+ * Helper function to escape HTML
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * Helper function to truncate message for notifications
+ */
+function truncateMessage(message, maxLength = 100) {
+    if (message.length <= maxLength) return message;
+    return message.substring(0, maxLength) + '...';
+}
+
+/**
+ * Convenience functions for different toast types
+ */
+const toast = {
+    success: (title, message = '', duration = 5000) => showToast(title, message, 'success', duration),
+    error: (title, message = '', duration = 7000) => showToast(title, message, 'error', duration),
+    warning: (title, message = '', duration = 6000) => showToast(title, message, 'warning', duration),
+    info: (title, message = '', duration = 5000) => showToast(title, message, 'info', duration)
+};
+
 // Request permission on page load
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', requestNotificationPermission);
@@ -3778,7 +3909,7 @@ function updateUserStatus(statusOrUser) {
         console.error('Error updating status:', err);
         // Show user-friendly error
         if (err.message.includes('Statut invalide')) {
-            alert('Statut invalide. Veuillez choisir un statut valide.');
+            toast.error('Statut invalide', 'Veillez choisir un statut valide.');
         }
     });
 }
@@ -3948,7 +4079,7 @@ function togglePinMessage(messageId, isPinned) {
     const token = localStorage.getItem('chat_token') || (currentUser && currentUser.token);
     
     if (!token) {
-        alert('Vous devez être connecté pour épingler un message');
+        toast.warning('Connexion requise', 'Vous devez être connecté pour épingler un message');
         return;
     }
     
@@ -4035,7 +4166,7 @@ function togglePinMessage(messageId, isPinned) {
         }
     }).catch(err => {
         console.error('Error toggling pin:', err);
-        alert('Erreur: ' + err.message);
+        toast.error('Erreur', err.message);
     });
 }
 
@@ -4171,7 +4302,7 @@ async function joinVoiceChannel(channel) {
     console.log('joinVoiceChannel called with:', channel);
     
     if (!currentUser) {
-        alert('Vous devez être connecté pour rejoindre un canal vocal');
+        toast.warning('Connexion requise', 'Vous devez être connecté pour rejoindre un canal vocal');
         return;
     }
     
@@ -4226,7 +4357,7 @@ async function joinVoiceChannel(channel) {
         
     } catch (error) {
         console.error('Error joining voice channel:', error);
-        alert('Erreur lors de la connexion au canal vocal: ' + (error.message || 'Erreur inconnue. Vérifiez la console pour plus de détails.'));
+        toast.error('Erreur de connexion', 'Erreur lors de la connexion au canal vocal: ' + (error.message || 'Erreur inconnue. Vérifiez la console pour plus de détails.'));
         currentVoiceChannel = null;
         isInVoiceChannel = false;
         updateVoiceUI(false);
@@ -4412,7 +4543,7 @@ function toggleVoiceDeafen() {
 // Toggle screen sharing
 async function toggleScreenShare() {
     if (!isInVoiceChannel || !currentVoiceChannel) {
-        alert('Vous devez être dans un canal vocal pour partager votre écran');
+        toast.warning('Canal vocal requis', 'Vous devez être dans un canal vocal pour partager votre écran');
         return;
     }
     
@@ -4485,7 +4616,7 @@ async function startScreenShare() {
     } catch (error) {
         console.error('Error starting screen share:', error);
         if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') {
-            alert('Erreur lors du démarrage du partage d\'écran: ' + error.message);
+            toast.error('Erreur de partage', 'Erreur lors du démarrage du partage d\'écran: ' + error.message);
         }
         isScreenSharing = false;
     }
@@ -5034,7 +5165,7 @@ function initializeVoiceControls() {
         inviteBtn.addEventListener('click', () => {
             // TODO: Show invite modal
             console.log('Invite clicked');
-            alert('Invitation à venir');
+            toast.info('Bientôt disponible', 'La fonctionnalité d\'invitation sera disponible prochainement');
         });
     }
     
@@ -5341,7 +5472,7 @@ async function reconnectWithNewDevice() {
         
     } catch (error) {
         console.error('Error reconnecting with new device:', error);
-        alert('Erreur lors du changement de périphérique: ' + error.message);
+        toast.error('Erreur', 'Erreur lors du changement de périphérique: ' + error.message);
     }
 }
 
@@ -5423,7 +5554,7 @@ async function testMicrophone() {
         
     } catch (error) {
         console.error('Error testing microphone:', error);
-        alert('Erreur lors du test du microphone: ' + error.message);
+        toast.error('Erreur', 'Erreur lors du test du microphone: ' + error.message);
         stopMicrophoneTest();
     }
 }

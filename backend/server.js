@@ -1,3 +1,6 @@
+// Load environment variables
+require('dotenv').config();
+
 const express = require("express");
 const app = express();
 const bcrypt = require("bcrypt");
@@ -133,7 +136,7 @@ const io = new Server(server, {
 });
 
 const db = require("./database");
-const SECRET_KEY = "super_secret_key_change_me"; // In production use env var
+const SECRET_KEY = process.env.JWT_SECRET || "super_secret_key_change_me";
 // REMOVED: voiceServer (mediasoup) - now using WebRTC native
 
 // --- AUTHENTICATION MIDDLEWARE ---
@@ -167,7 +170,12 @@ app.post("/api/register", (req, res) => {
             if (err.message.includes("UNIQUE")) return res.status(400).json({ error: "Pseudo déjà pris" });
             return res.status(500).json({ error: "Erreur serveur" });
         }
-        const token = jwt.sign({ id: this.lastID, username }, SECRET_KEY);
+        // Generate JWT token with expiration (7 days)
+        const token = jwt.sign(
+            { id: this.lastID, username },
+            SECRET_KEY,
+            { expiresIn: '7d' }
+        );
         res.json({ token, username, id: this.lastID });
     });
 });
@@ -178,7 +186,12 @@ app.post("/api/login", (req, res) => {
         if (err || !user) return res.status(401).json({ error: "Utilisateur inconnu" });
 
         if (bcrypt.compareSync(password, user.password)) {
-            const token = jwt.sign({ id: user.id, username: user.username }, SECRET_KEY);
+            // Generate JWT token with expiration (7 days)
+            const token = jwt.sign(
+                { id: user.id, username: user.username },
+                SECRET_KEY,
+                { expiresIn: '7d' }
+            );
             res.json({ token, username: user.username, id: user.id });
         } else {
             res.status(401).json({ error: "Mot de passe incorrect" });
@@ -1332,7 +1345,11 @@ io.on("connection", (socket) => {
 });
 
 // Start server (WebRTC Native - no mediasoup initialization needed)
-server.listen(3000, () => {
-    console.log("Server running on http://localhost:3000");
+const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
+server.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Environment: ${NODE_ENV}`);
     console.log("Voice channels using WebRTC native");
 });
