@@ -10,8 +10,15 @@ const path = require("path");
 const fs = require("fs");
 
 const cors = require("cors");
-app.use(cors());
+app.use(cors({
+    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+    credentials: true
+}));
 app.use(express.json());
+
+app.get("/", (req, res) => {
+    res.send("Instant Chat API is running. Please visit http://localhost:3000 for the frontend.");
+});
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, "uploads");
@@ -130,9 +137,10 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server, {
     cors: {
-        origin: process.env.CORS_ORIGIN || "*",
+        origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
         methods: ["GET", "POST"],
-        credentials: true
+        credentials: true,
+        allowedHeaders: ["my-custom-header"],
     },
     // Configuration pour la production (reverse proxy)
     allowEIO3: true,
@@ -309,6 +317,10 @@ app.put("/api/users/:id/profile", (req, res) => {
             // Return updated user
             db.get("SELECT id, username, bio, avatar, avatar_color, status, created_at FROM users WHERE id = ?", [userId], (err, user) => {
                 if (err) return res.status(500).json({ error: "Erreur DB" });
+
+                // Broadcast user update to everyone
+                io.emit("user_updated", user);
+
                 res.json(user);
             });
         });
@@ -631,6 +643,34 @@ io.on("connection", (socket) => {
         socket.to(`voice_${roomId}`).emit("voice_mute_status", { userId, muted });
     });
     
+    // Handle voice WebRTC signaling
+    socket.on("voice_offer", (data) => {
+        const { targetUserId, offer, roomId } = data;
+        socket.to(`voice_${roomId}`).emit("voice_offer", {
+            userId: socket.userId,
+            targetUserId,
+            offer
+        });
+    });
+
+    socket.on("voice_answer", (data) => {
+        const { targetUserId, answer, roomId } = data;
+        socket.to(`voice_${roomId}`).emit("voice_answer", {
+            userId: socket.userId,
+            targetUserId,
+            answer
+        });
+    });
+
+    socket.on("voice_ice_candidate", (data) => {
+        const { targetUserId, candidate, roomId } = data;
+        socket.to(`voice_${roomId}`).emit("voice_ice_candidate", {
+            userId: socket.userId,
+            targetUserId,
+            candidate
+        });
+    });
+
     // Handle screen share start
     socket.on("screen_share_start", (data) => {
         const { roomId, userId, channelId } = data;
@@ -690,6 +730,12 @@ io.on("connection", (socket) => {
         const { roomId, userId } = data;
         socket.to(`voice_${roomId}`).emit("voice_speaking", { userId });
     });
+
+    // Handle voice video status (WebRTC Native)
+    socket.on("voice_video_status", (data) => {
+        const { roomId, userId, enabled } = data;
+        socket.to(`voice_${roomId}`).emit("voice_video_status", { userId, enabled });
+    });
     
     // Handle user status updates
     socket.on("user_status_update", (data) => {
@@ -718,6 +764,8 @@ io.on("connection", (socket) => {
             query = `
                 SELECT m.*, 
                 u_sender.status as sender_status,
+                u_sender.bio as sender_bio,
+                u_sender.created_at as sender_created_at,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
@@ -732,6 +780,8 @@ io.on("connection", (socket) => {
             query = `
                 SELECT m.*, 
                 u_sender.status as sender_status,
+                u_sender.bio as sender_bio,
+                u_sender.created_at as sender_created_at,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
@@ -853,6 +903,10 @@ io.on("connection", (socket) => {
             query = `
                 SELECT m.*, 
                 u_sender.status as sender_status,
+                u_sender.avatar as sender_avatar,
+                u_sender.avatar_color as sender_avatar_color,
+                u_sender.bio as sender_bio,
+                u_sender.created_at as sender_created_at,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
@@ -868,10 +922,14 @@ io.on("connection", (socket) => {
             `;
             params = [channelId, beforeMessageId, limit];
         } else {
-            // Load latest messages
+            // Load latest messages (default 25)
             query = `
                 SELECT m.*, 
                 u_sender.status as sender_status,
+                u_sender.avatar as sender_avatar,
+                u_sender.avatar_color as sender_avatar_color,
+                u_sender.bio as sender_bio,
+                u_sender.created_at as sender_created_at,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
@@ -885,13 +943,17 @@ io.on("connection", (socket) => {
                 ORDER BY m.date DESC 
                 LIMIT ?
             `;
-            params = [channelId, limit];
+            params = [channelId, limit || 25];
         }
 
         db.all(query, params, (err, rows) => {
             if (!err) {
                 const messages = rows.map(row => ({
                     ...row,
+                    avatar: row.sender_avatar,
+                    avatar_color: row.sender_avatar_color,
+                    bio: row.sender_bio,
+                    created_at: row.sender_created_at,
                     reactions: row.reactions ? JSON.parse(row.reactions) : [],
                     files: row.files_json ? JSON.parse(row.files_json) : (row.file_path ? [{
                         file_path: row.file_path,
@@ -950,6 +1012,10 @@ io.on("connection", (socket) => {
             query = `
                 SELECT m.*, 
                 u_sender.status as sender_status,
+                u_sender.avatar as sender_avatar,
+                u_sender.avatar_color as sender_avatar_color,
+                u_sender.bio as sender_bio,
+                u_sender.created_at as sender_created_at,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
@@ -971,6 +1037,10 @@ io.on("connection", (socket) => {
             query = `
                 SELECT m.*, 
                 u_sender.status as sender_status,
+                u_sender.avatar as sender_avatar,
+                u_sender.avatar_color as sender_avatar_color,
+                u_sender.bio as sender_bio,
+                u_sender.created_at as sender_created_at,
                 (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
                  FROM reactions r 
                  JOIN users u ON r.user_id = u.id 
@@ -985,13 +1055,17 @@ io.on("connection", (socket) => {
                 ORDER BY m.date DESC 
                 LIMIT ?
             `;
-            params = [myId, otherId, otherId, myId, limit];
+            params = [myId, otherId, otherId, myId, limit || 25];
         }
 
         db.all(query, params, (err, rows) => {
             if (!err) {
                 const messages = rows.map(row => ({
                     ...row,
+                    avatar: row.sender_avatar,
+                    avatar_color: row.sender_avatar_color,
+                    bio: row.sender_bio,
+                    created_at: row.sender_created_at,
                     reactions: row.reactions ? JSON.parse(row.reactions) : [],
                     files: row.files_json ? JSON.parse(row.files_json) : (row.file_path ? [{
                         file_path: row.file_path,
@@ -1201,9 +1275,13 @@ io.on("connection", (socket) => {
             const reply_username = replyRow ? replyRow.username : null;
             const reply_message = replyRow ? replyRow.message : null;
 
-            // Get sender status
-            db.get("SELECT status FROM users WHERE id = ?", [sender_id], (err, sender) => {
+            // Get sender status and avatar data to send immediately
+            db.get("SELECT status, avatar, avatar_color, bio, created_at FROM users WHERE id = ?", [sender_id], (err, sender) => {
                 const sender_status = sender ? sender.status : 'online';
+                const sender_avatar = sender ? sender.avatar : null;
+                const sender_avatar_color = sender ? sender.avatar_color : null;
+                const sender_bio = sender ? sender.bio : null;
+                const sender_created_at = sender ? sender.created_at : null;
 
                 if (recipient_id) {
                     // Private Message
@@ -1219,6 +1297,10 @@ io.on("connection", (socket) => {
                                     recipient_id,
                                     sender_id,
                                     sender_status: sender_status === 'invisible' ? 'offline' : sender_status,
+                                    avatar: sender_avatar,
+                                    avatar_color: sender_avatar_color,
+                                    bio: sender_bio,
+                                    created_at: sender_created_at,
                                     reply_to_id,
                                     reply_username,
                                     reply_message,
@@ -1258,6 +1340,10 @@ io.on("connection", (socket) => {
                                     channel_id,
                                     sender_id,
                                     sender_status: sender_status === 'invisible' ? 'offline' : sender_status,
+                                    avatar: sender_avatar,
+                                    avatar_color: sender_avatar_color,
+                                    bio: sender_bio,
+                                    created_at: sender_created_at,
                                     reply_to_id,
                                     reply_username,
                                     reply_message,
@@ -1351,7 +1437,7 @@ io.on("connection", (socket) => {
 });
 
 // Start server (WebRTC Native - no mediasoup initialization needed)
-const PORT = process.env.PORT || 3000;
+const PORT = 3001; // Force port 3001 to avoid conflict with Next.js
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Listen on 0.0.0.0 to accept connections from outside (important for VPS)
