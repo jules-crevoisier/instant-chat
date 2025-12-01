@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { socket } from "@/lib/socket";
+import { API_ENDPOINTS, SOCKET_EVENTS } from "@/lib/config";
 
 export interface Channel {
   id: number;
@@ -31,10 +32,10 @@ export function useChatData() {
     const fetchData = async () => {
       try {
         const [channelsRes, usersRes] = await Promise.all([
-          fetch("http://localhost:3001/api/channels", {
+          fetch(API_ENDPOINTS.CHANNELS, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch("http://localhost:3001/api/users", {
+          fetch(API_ENDPOINTS.USERS, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -66,21 +67,30 @@ export function useChatData() {
       };
 
       const onChannelCreated = (newChannel: Channel) => {
-          setChannels((prev) => [...prev, newChannel]);
+          setChannels((prev) => {
+              if (prev.find(c => c.id === newChannel.id)) return prev;
+              return [...prev, newChannel];
+          });
       };
 
-      const onChannelDeleted = (channelId: number) => {
-          setChannels((prev) => prev.filter((c) => c.id !== channelId));
+      const onChannelUpdated = (updatedChannel: Channel) => {
+          setChannels((prev) => prev.map(c => c.id === updatedChannel.id ? updatedChannel : c));
       };
 
-      socket.on("user_status_updated", onUserStatusUpdated);
-      socket.on("channel_created", onChannelCreated);
-      socket.on("channel_deleted", onChannelDeleted);
+      const onChannelDeleted = (deletedChannel: { id: number }) => {
+          setChannels((prev) => prev.filter((c) => c.id !== deletedChannel.id));
+      };
+
+      socket.on(SOCKET_EVENTS.USER_STATUS_UPDATED, onUserStatusUpdated);
+      socket.on(SOCKET_EVENTS.CHANNEL_CREATED, onChannelCreated);
+      socket.on("channel_updated", onChannelUpdated);
+      socket.on(SOCKET_EVENTS.CHANNEL_DELETED, onChannelDeleted);
 
       return () => {
-          socket.off("user_status_updated", onUserStatusUpdated);
-          socket.off("channel_created", onChannelCreated);
-          socket.off("channel_deleted", onChannelDeleted);
+          socket.off(SOCKET_EVENTS.USER_STATUS_UPDATED, onUserStatusUpdated);
+          socket.off(SOCKET_EVENTS.CHANNEL_CREATED, onChannelCreated);
+          socket.off("channel_updated", onChannelUpdated);
+          socket.off(SOCKET_EVENTS.CHANNEL_DELETED, onChannelDeleted);
       };
   }, []);
 

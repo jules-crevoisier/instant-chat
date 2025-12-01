@@ -26,6 +26,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { toast } from "sonner";
+import { API_ENDPOINTS } from "@/lib/config";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -53,7 +54,7 @@ export function AuthScreen() {
 
   async function onLogin(values: z.infer<typeof loginSchema>) {
     try {
-      const res = await fetch("http://localhost:3001/api/login", {
+      const res = await fetch(API_ENDPOINTS.LOGIN, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
@@ -75,7 +76,7 @@ export function AuthScreen() {
 
   async function onRegister(values: z.infer<typeof registerSchema>) {
     try {
-      const res = await fetch("http://localhost:3001/api/register", {
+      const res = await fetch(API_ENDPOINTS.REGISTER, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),

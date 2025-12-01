@@ -27,6 +27,7 @@ import { useTheme } from "next-themes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { socket } from "@/lib/socket";
+import { API_ENDPOINTS } from "@/lib/config";
 
 export function ProfileSettings() {
   const { user, token } = useAuth();
@@ -44,7 +45,7 @@ export function ProfileSettings() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`http://localhost:3001/api/users/${user.id}/profile`, {
+      const response = await fetch(API_ENDPOINTS.USER_PROFILE(user.id), {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

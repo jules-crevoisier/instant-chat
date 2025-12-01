@@ -88,6 +88,13 @@ db.serialize(() => {
             db.run("ALTER TABLE messages ADD COLUMN deleted INTEGER DEFAULT 0", () => { });
             db.run("ALTER TABLE messages ADD COLUMN edited_at DATETIME", () => { });
             db.run("ALTER TABLE messages ADD COLUMN pinned INTEGER DEFAULT 0", () => { });
+            
+            // Create indexes for better query performance
+            db.run("CREATE INDEX IF NOT EXISTS idx_messages_channel_date ON messages(channel_id, date DESC)", () => { });
+            db.run("CREATE INDEX IF NOT EXISTS idx_messages_recipient_date ON messages(recipient_id, date DESC)", () => { });
+            db.run("CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)", () => { });
+            db.run("CREATE INDEX IF NOT EXISTS idx_messages_deleted ON messages(deleted)", () => { });
+            db.run("CREATE INDEX IF NOT EXISTS idx_messages_pinned ON messages(pinned, channel_id)", () => { });
         }
     });
 

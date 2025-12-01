@@ -8,6 +8,9 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const https = require("https");
+const http = require("http");
+const crypto = require("crypto");
 
 const cors = require("cors");
 app.use(cors({
@@ -129,9 +132,132 @@ const upload = multer({
 // Serve uploaded files statically
 app.use("/uploads", express.static(uploadsDir));
 
+// Create avatars cache directory if it doesn't exist
+const avatarsCacheDir = path.join(__dirname, "avatars_cache");
+if (!fs.existsSync(avatarsCacheDir)) {
+    fs.mkdirSync(avatarsCacheDir, { recursive: true });
+}
+
+// Simple in-memory cache for avatar URLs to prevent duplicate downloads
+const avatarCache = new Map();
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+// Proxy endpoint for external avatars
+app.get("/api/avatar-proxy", (req, res) => {
+    const imageUrl = req.query.url;
+    
+    if (!imageUrl) {
+        return res.status(400).json({ error: "URL manquante" });
+    }
+
+    // Validate URL
+    try {
+        const url = new URL(imageUrl);
+        // Only allow http and https
+        if (!['http:', 'https:'].includes(url.protocol)) {
+            return res.status(400).json({ error: "Protocole non autorisé" });
+        }
+        
+        // Block localhost/internal IPs for security
+        if (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname.startsWith('192.168.') || url.hostname.startsWith('10.') || url.hostname.startsWith('172.')) {
+            return res.status(400).json({ error: "URL non autorisée" });
+        }
+    } catch (err) {
+        return res.status(400).json({ error: "URL invalide" });
+    }
+
+    // Create hash of URL for cache filename
+    const urlHash = crypto.createHash('md5').update(imageUrl).digest('hex');
+    const cacheFilePath = path.join(avatarsCacheDir, `${urlHash}.cache`);
+    const cacheMetaPath = path.join(avatarsCacheDir, `${urlHash}.meta`);
+
+    // Check if we have a cached version
+    if (fs.existsSync(cacheFilePath) && fs.existsSync(cacheMetaPath)) {
+        try {
+            const meta = JSON.parse(fs.readFileSync(cacheMetaPath, 'utf8'));
+            const now = Date.now();
+            
+            // Check if cache is still valid
+            if (now - meta.timestamp < CACHE_DURATION) {
+                // Serve from cache
+                const imageBuffer = fs.readFileSync(cacheFilePath);
+                res.setHeader('Content-Type', meta.contentType || 'image/jpeg');
+                res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hours
+                return res.send(imageBuffer);
+            } else {
+                // Cache expired, delete old files
+                fs.unlinkSync(cacheFilePath);
+                fs.unlinkSync(cacheMetaPath);
+            }
+        } catch (err) {
+            // If cache read fails, continue to download
+            console.error("Error reading cache:", err);
+        }
+    }
+
+    // Download image
+    const protocol = imageUrl.startsWith('https') ? https : http;
+    
+    protocol.get(imageUrl, (downloadRes) => {
+        // Check if response is successful
+        if (downloadRes.statusCode !== 200) {
+            return res.status(downloadRes.statusCode).json({ 
+                error: `Erreur lors du téléchargement: ${downloadRes.statusCode}` 
+            });
+        }
+
+        // Check content type
+        const contentType = downloadRes.headers['content-type'] || 'image/jpeg';
+        if (!contentType.startsWith('image/')) {
+            return res.status(400).json({ error: "Le contenu n'est pas une image" });
+        }
+
+        // Limit image size to 5MB
+        const maxSize = 5 * 1024 * 1024;
+        let imageData = Buffer.alloc(0);
+        let totalSize = 0;
+
+        downloadRes.on('data', (chunk) => {
+            totalSize += chunk.length;
+            if (totalSize > maxSize) {
+                downloadRes.destroy();
+                return res.status(413).json({ error: "Image trop volumineuse" });
+            }
+            imageData = Buffer.concat([imageData, chunk]);
+        });
+
+        downloadRes.on('end', () => {
+            // Save to cache
+            try {
+                fs.writeFileSync(cacheFilePath, imageData);
+                fs.writeFileSync(cacheMetaPath, JSON.stringify({
+                    timestamp: Date.now(),
+                    contentType: contentType,
+                    url: imageUrl
+                }));
+            } catch (err) {
+                console.error("Error saving cache:", err);
+                // Continue even if cache save fails
+            }
+
+            // Send image
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Cache-Control', 'public, max-age=86400'); // 24 hours
+            res.send(imageData);
+        });
+
+        downloadRes.on('error', (err) => {
+            console.error("Error downloading image:", err);
+            res.status(500).json({ error: "Erreur lors du téléchargement de l'image" });
+        });
+    }).on('error', (err) => {
+        console.error("Error requesting image:", err);
+        res.status(500).json({ error: "Impossible de télécharger l'image" });
+    });
+});
+
 // REMOVED: mediasoup-client - now using WebRTC native
 
-const http = require("http");
 const server = http.createServer(app);
 
 const { Server } = require("socket.io");
@@ -330,9 +456,168 @@ app.put("/api/users/:id/profile", (req, res) => {
 // --- CHANNELS ---
 
 app.get("/api/channels", (req, res) => {
-    db.all("SELECT * FROM channels", (err, rows) => {
+    db.all("SELECT * FROM channels ORDER BY id ASC", (err, rows) => {
         if (err) return res.status(500).json({ error: "Erreur DB" });
         res.json(rows);
+    });
+});
+
+const { validateChannel, validateMessage, validateUserProfile } = require("./validation");
+
+// Create channel
+app.post("/api/channels", authenticateToken, (req, res) => {
+    const validation = validateChannel(req.body);
+    
+    if (!validation.success) {
+        return res.status(400).json({ error: validation.error });
+    }
+
+    const { name, description, icon, voice_channel } = validation.data;
+
+    db.run(
+        "INSERT INTO channels (name, description, icon, voice_channel) VALUES (?, ?, ?, ?)",
+        [
+            name,
+            description,
+            icon,
+            voice_channel ? 1 : 0
+        ],
+        function (err) {
+            if (err) {
+                if (err.message.includes("UNIQUE constraint")) {
+                    return res.status(400).json({ error: "Un canal avec ce nom existe déjà" });
+                }
+                return res.status(500).json({ error: "Erreur lors de la création du canal" });
+            }
+
+            const newChannel = {
+                id: this.lastID,
+                name: name.trim(),
+                description: description || "",
+                icon: icon || (voice_channel ? "🔊" : "💬"),
+                voice_channel: voice_channel ? 1 : 0
+            };
+
+            // Broadcast to all clients
+            io.emit("channel_created", newChannel);
+
+            res.json(newChannel);
+        }
+    );
+});
+
+// Update channel
+app.put("/api/channels/:id", authenticateToken, (req, res) => {
+    const channelId = parseInt(req.params.id);
+    
+    // Prevent editing the default channel (ID 1) name
+    if (channelId === 1) {
+        const validation = validateChannel(req.body);
+        if (!validation.success) {
+            return res.status(400).json({ error: validation.error });
+        }
+        const { description, icon } = validation.data;
+        // Only allow editing description and icon for default channel
+        db.run(
+            "UPDATE channels SET description = ?, icon = ? WHERE id = ?",
+            [description, icon, channelId],
+            function (err) {
+                if (err) {
+                    return res.status(500).json({ error: "Erreur DB" });
+                }
+                db.get("SELECT * FROM channels WHERE id = ?", [channelId], (err, channel) => {
+                    if (err) return res.status(500).json({ error: "Erreur DB" });
+                    io.emit("channel_updated", channel);
+                    res.json(channel);
+                });
+            }
+        );
+        return;
+    }
+
+    const validation = validateChannel(req.body);
+    
+    if (!validation.success) {
+        return res.status(400).json({ error: validation.error });
+    }
+
+    const { name, description, icon, voice_channel } = validation.data;
+
+    // Check if channel exists
+    db.get("SELECT * FROM channels WHERE id = ?", [channelId], (err, channel) => {
+        if (err) {
+            return res.status(500).json({ error: "Erreur DB" });
+        }
+
+        if (!channel) {
+            return res.status(404).json({ error: "Canal introuvable" });
+        }
+
+        db.run(
+            "UPDATE channels SET name = ?, description = ?, icon = ?, voice_channel = ? WHERE id = ?",
+            [name, description, icon, voice_channel ? 1 : 0, channelId],
+            function (err) {
+                if (err) {
+                    return res.status(500).json({ error: "Erreur DB" });
+                }
+                db.get("SELECT * FROM channels WHERE id = ?", [channelId], (err, updatedChannel) => {
+                    if (err) return res.status(500).json({ error: "Erreur DB" });
+                    io.emit("channel_updated", updatedChannel);
+                    res.json(updatedChannel);
+                });
+            }
+        );
+    });
+});
+
+// Delete channel
+app.delete("/api/channels/:id", authenticateToken, (req, res) => {
+    const channelId = parseInt(req.params.id);
+
+    // Prevent deleting the default channel (ID 1)
+    if (channelId === 1) {
+        return res.status(403).json({ error: "Impossible de supprimer le canal par défaut" });
+    }
+
+    // Check if channel exists
+    db.get("SELECT * FROM channels WHERE id = ?", [channelId], (err, channel) => {
+        if (err) {
+            return res.status(500).json({ error: "Erreur DB" });
+        }
+
+        if (!channel) {
+            return res.status(404).json({ error: "Canal introuvable" });
+        }
+
+        // Delete associated messages and reactions
+        db.all("SELECT id FROM messages WHERE channel_id = ?", [channelId], (err, messageRows) => {
+            if (!err && messageRows.length > 0) {
+                const messageIds = messageRows.map(r => r.id);
+                if (messageIds.length > 0) {
+                    const placeholders = messageIds.map(() => "?").join(",");
+                    db.run(`DELETE FROM reactions WHERE message_id IN (${placeholders})`, messageIds);
+                }
+            }
+            
+            // Delete messages
+            db.run("DELETE FROM messages WHERE channel_id = ?", [channelId], (err) => {
+                if (err) {
+                    return res.status(500).json({ error: "Erreur lors de la suppression des messages" });
+                }
+
+                // Delete channel
+                db.run("DELETE FROM channels WHERE id = ?", [channelId], (err) => {
+                    if (err) {
+                        return res.status(500).json({ error: "Erreur lors de la suppression du canal" });
+                    }
+
+                    // Broadcast to all clients
+                    io.emit("channel_deleted", channelId);
+
+                    res.json({ success: true, message: "Canal supprimé avec succès" });
+                });
+            });
+        });
     });
 });
 
@@ -522,6 +807,185 @@ app.get("/api/files/:filename", (req, res) => {
         filename: filename,
         size: stats.size,
         created: stats.birthtime
+    });
+});
+
+// --- SEARCH ---
+
+// Search messages endpoint
+app.get("/api/search", authenticateToken, (req, res) => {
+    const userId = req.user.id;
+    const {
+        query,
+        channelId,
+        userId: searchUserId,
+        hasFiles,
+        hasLinks,
+        beforeDate,
+        afterDate,
+        limit = 50,
+        offset = 0
+    } = req.query;
+
+    if (!query || query.trim().length === 0) {
+        return res.status(400).json({ error: "Requête de recherche vide" });
+    }
+
+    // Build WHERE conditions
+    const conditions = ["m.deleted = 0"];
+    const params = [];
+
+    // Search query
+    conditions.push("m.message LIKE ?");
+    params.push(`%${query}%`);
+
+    // Channel filter
+    if (channelId) {
+        conditions.push("m.channel_id = ?");
+        params.push(channelId);
+    } else {
+        // If no channel specified, only show channels user has access to
+        // For now, we'll show all channels (can be improved with permissions)
+        conditions.push("m.channel_id IS NOT NULL");
+    }
+
+    // User filter (sender)
+    if (searchUserId) {
+        conditions.push("m.sender_id = ?");
+        params.push(searchUserId);
+    }
+
+    // DM filter - only show DMs where user is involved
+    if (!channelId && !searchUserId) {
+        // Show both channel messages and DMs where user is involved
+        conditions.push(`(
+            m.channel_id IS NOT NULL OR 
+            m.recipient_id = ? OR 
+            (m.sender_id = ? AND m.recipient_id IS NOT NULL)
+        )`);
+        params.push(userId, userId);
+    } else if (!channelId) {
+        // If searching by user, show DMs with that user
+        conditions.push(`(
+            m.channel_id IS NOT NULL OR 
+            (m.sender_id = ? AND m.recipient_id = ?) OR
+            (m.sender_id = ? AND m.recipient_id = ?)
+        )`);
+        params.push(userId, searchUserId, searchUserId, userId);
+    }
+
+    // File filter
+    if (hasFiles === "true") {
+        conditions.push("(m.file_path IS NOT NULL OR m.files_json IS NOT NULL)");
+    }
+
+    // Link filter (simple check for http/https in message)
+    if (hasLinks === "true") {
+        conditions.push("(m.message LIKE '%http://%' OR m.message LIKE '%https://%')");
+    }
+
+    // Date filters
+    if (beforeDate) {
+        conditions.push("m.date < ?");
+        params.push(beforeDate);
+    }
+    if (afterDate) {
+        conditions.push("m.date > ?");
+        params.push(afterDate);
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    // Get total count
+    const countQuery = `
+        SELECT COUNT(*) as total
+        FROM messages m
+        WHERE ${whereClause}
+    `;
+
+    db.get(countQuery, params, (err, countResult) => {
+        if (err) {
+            console.error("Search count error:", err);
+            return res.status(500).json({ error: "Erreur lors de la recherche" });
+        }
+
+        const total = countResult.total;
+
+        // Get messages with context (previous and next messages)
+        const searchQuery = `
+            SELECT 
+                m.*,
+                u_sender.username as sender_username,
+                u_sender.avatar as sender_avatar,
+                u_sender.avatar_color as sender_avatar_color,
+                u_sender.bio as sender_bio,
+                u_sender.created_at as sender_created_at,
+                u_sender.status as sender_status,
+                c.name as channel_name,
+                (SELECT json_group_array(json_object('emoji', r.emoji, 'user_id', r.user_id, 'username', u.username)) 
+                 FROM reactions r 
+                 JOIN users u ON r.user_id = u.id 
+                 WHERE r.message_id = m.id) as reactions
+            FROM messages m
+            LEFT JOIN users u_sender ON m.sender_id = u_sender.id
+            LEFT JOIN channels c ON m.channel_id = c.id
+            WHERE ${whereClause}
+            ORDER BY m.date DESC
+            LIMIT ? OFFSET ?
+        `;
+
+        const searchParams = [...params, parseInt(limit), parseInt(offset)];
+
+        db.all(searchQuery, searchParams, (err, rows) => {
+            if (err) {
+                console.error("Search error:", err);
+                return res.status(500).json({ error: "Erreur lors de la recherche" });
+            }
+
+            const messages = rows.map(row => {
+                const message = {
+                    id: row.id,
+                    username: row.username || row.sender_username,
+                    message: row.message,
+                    date: row.date,
+                    sender_id: row.sender_id,
+                    channel_id: row.channel_id,
+                    recipient_id: row.recipient_id,
+                    reply_to_id: row.reply_to_id,
+                    file_path: row.file_path,
+                    file_name: row.file_name,
+                    file_type: row.file_type,
+                    file_size: row.file_size,
+                    edited: row.edited === 1,
+                    deleted: row.deleted === 1,
+                    edited_at: row.edited_at,
+                    pinned: row.pinned === 1,
+                    avatar: row.sender_avatar,
+                    avatar_color: row.sender_avatar_color,
+                    bio: row.sender_bio,
+                    created_at: row.sender_created_at,
+                    status: row.sender_status,
+                    channel_name: row.channel_name,
+                    reactions: row.reactions ? JSON.parse(row.reactions) : [],
+                    files: row.files_json ? JSON.parse(row.files_json) : (row.file_path ? [{
+                        file_path: row.file_path,
+                        file_name: row.file_name,
+                        file_type: row.file_type,
+                        file_size: row.file_size
+                    }] : null)
+                };
+
+                return message;
+            });
+
+            res.json({
+                messages,
+                total,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                hasMore: (parseInt(offset) + parseInt(limit)) < total
+            });
+        });
     });
 });
 
@@ -896,6 +1360,7 @@ io.on("connection", (socket) => {
 
     // Helper function to load channel messages
     function loadChannelMessages(socket, channelId, beforeMessageId, limit, isInitial) {
+        const messageLimit = limit || 20; // Default to 20 for better performance (Discord-like)
         let query, params;
         
         if (beforeMessageId) {
@@ -916,11 +1381,11 @@ io.on("connection", (socket) => {
                 FROM messages m 
                 LEFT JOIN users u_sender ON m.sender_id = u_sender.id
                 LEFT JOIN messages rm ON m.reply_to_id = rm.id
-                WHERE m.channel_id = ? AND m.id < ?
+                WHERE m.channel_id = ? AND m.id < ? AND m.deleted = 0
                 ORDER BY m.date DESC 
                 LIMIT ?
             `;
-            params = [channelId, beforeMessageId, limit];
+            params = [channelId, beforeMessageId, messageLimit];
         } else {
             // Load latest messages (default 25)
             query = `
@@ -939,11 +1404,11 @@ io.on("connection", (socket) => {
                 FROM messages m 
                 LEFT JOIN users u_sender ON m.sender_id = u_sender.id
                 LEFT JOIN messages rm ON m.reply_to_id = rm.id
-                WHERE m.channel_id = ? 
+                WHERE m.channel_id = ? AND m.deleted = 0
                 ORDER BY m.date DESC 
                 LIMIT ?
             `;
-            params = [channelId, limit || 25];
+            params = [channelId, messageLimit];
         }
 
         db.all(query, params, (err, rows) => {
@@ -982,13 +1447,13 @@ io.on("connection", (socket) => {
 
     socket.on("join_channel", (channelId) => {
         socket.join(`channel_${channelId}`);
-        // Load first 50 messages
-        loadChannelMessages(socket, channelId, null, 50, true);
+        // Load first 20 messages (optimized for Discord-like performance)
+        loadChannelMessages(socket, channelId, null, 20, true);
     });
 
     // Load more messages for channel (pagination)
     socket.on("load_more_messages", (data) => {
-        const { channelId, recipientId, beforeMessageId, limit = 50 } = data;
+        const { channelId, recipientId, beforeMessageId, limit = 30 } = data;
         
         if (channelId) {
             loadChannelMessages(socket, channelId, beforeMessageId, limit, false);
@@ -999,8 +1464,8 @@ io.on("connection", (socket) => {
 
     socket.on("join_dm", (data) => {
         const { myId, otherId } = data;
-        // Load first 50 messages
-        loadDMMessages(socket, myId, otherId, null, 50, true);
+        // Load first 20 messages (optimized for Discord-like performance)
+        loadDMMessages(socket, myId, otherId, null, 20, true);
     });
 
     // Helper function to load DM messages

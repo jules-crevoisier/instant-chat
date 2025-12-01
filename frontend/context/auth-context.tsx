@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { socket } from "@/lib/socket";
+import { API_ENDPOINTS } from "@/lib/config";
 
 interface User {
   id: number;
@@ -46,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUser = async (authToken: string) => {
     try {
-      const res = await fetch("http://localhost:3001/api/me", {
+      const res = await fetch(API_ENDPOINTS.ME, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       if (res.ok) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { AuthProvider } from "@/context/auth-context";
+import { NotificationProvider } from "@/context/notification-context";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 
@@ -13,8 +14,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       disableTransitionOnChange
     >
       <AuthProvider>
-        {children}
-        <Toaster />
+        <NotificationProvider>
+          {children}
+          <Toaster />
+        </NotificationProvider>
       </AuthProvider>
     </ThemeProvider>
   );

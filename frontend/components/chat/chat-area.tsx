@@ -2,7 +2,7 @@
 
 import { ActiveChat } from "./chat-layout";
 import { User, Channel } from "@/hooks/use-chat-data";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { socket } from "@/lib/socket";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -45,6 +45,11 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { formatFileSize } from "@/lib/utils";
+import { useNotifications } from "@/context/notification-context";
+import { API_ENDPOINTS, SOCKET_EVENTS, APP_CONFIG, getFileUrl } from "@/lib/config";
+import { saveDraft, getDraft, clearDraft } from "@/lib/draft-manager";
+import { MessageItem } from "@/components/messages/message-item";
+import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 interface Message {
   id: number;
@@ -79,14 +84,15 @@ interface ChatAreaProps {
   setConnectedVoiceChannelId: (id: number | null) => void;
   showVoiceChat: boolean;
   setShowVoiceChat: (show: boolean) => void;
+  onJumpToMessage?: (messageId: number, channelId?: number, userId?: number) => void;
 }
 
-export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId, setConnectedVoiceChannelId, showVoiceChat, setShowVoiceChat }: ChatAreaProps) {
+export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId, setConnectedVoiceChannelId, showVoiceChat, setShowVoiceChat, onJumpToMessage }: ChatAreaProps) {
   const { user, token } = useAuth();
   const { theme } = useTheme();
+  const { markChannelAsRead, markUserAsRead } = useNotifications();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
   const inVoice = connectedVoiceChannelId !== null;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMentions, setShowMentions] = useState(false);
@@ -112,6 +118,16 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
   // Typing Indicator State
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const draftSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Pagination State
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const [firstItemIndex, setFirstItemIndex] = useState(1000000); // Large number for reverse list
+  const isAtBottomRef = useRef(true); // Track if user is at bottom
+  const messagesLengthRef = useRef(0); // Track messages length to avoid re-renders
+  const messagesRef = useRef<Message[]>([]); // Track messages to avoid re-renders
 
   // Check if current channel is a voice channel
   const currentChannel = channels?.find(c => c.id === activeChat.id);
@@ -120,7 +136,7 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
   // Fetch channel members for mentions
   useEffect(() => {
       if (activeChat.type === "channel" && token) {
-          fetch(`http://localhost:3001/api/channels/${activeChat.id}/members`, {
+          fetch(API_ENDPOINTS.CHANNEL_MEMBERS(activeChat.id), {
               headers: { Authorization: `Bearer ${token}` }
           })
           .then(res => res.json())
@@ -146,12 +162,22 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
       const newValue = e.target.value;
       setInputValue(newValue);
       setCursorPosition(e.target.selectionStart || 0);
+      
+      // Save draft with debounce
+      if (activeChat && draftSaveTimeoutRef.current) {
+          clearTimeout(draftSaveTimeoutRef.current);
+      }
+      if (activeChat) {
+          draftSaveTimeoutRef.current = setTimeout(() => {
+              saveDraft(activeChat.type, activeChat.id, newValue);
+          }, APP_CONFIG.DRAFT_SAVE_DELAY);
+      }
 
-      // Check for mention trigger
+      // Check for mention trigger (@username, @everyone, @here)
       const lastAtPos = newValue.lastIndexOf("@", e.target.selectionStart || 0);
       if (lastAtPos !== -1) {
           const query = newValue.substring(lastAtPos + 1, e.target.selectionStart || 0);
-          if (!query.includes(" ")) {
+          if (!query.includes(" ") && !query.includes("\n")) {
               setShowMentions(true);
               setMentionQuery(query);
               return;
@@ -159,9 +185,19 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
       }
       setShowMentions(false);
 
+      // Save draft with debounce
+      if (activeChat && draftSaveTimeoutRef.current) {
+          clearTimeout(draftSaveTimeoutRef.current);
+      }
+      if (activeChat) {
+          draftSaveTimeoutRef.current = setTimeout(() => {
+              saveDraft(activeChat.type, activeChat.id, newValue);
+          }, APP_CONFIG.DRAFT_SAVE_DELAY);
+      }
+
       // Typing Indicator Logic
       if (user) {
-          socket.emit("typing", {
+          socket.emit(SOCKET_EVENTS.USER_TYPING, {
               username: user.username,
               user_id: user.id,
               channel_id: activeChat.type === "channel" ? activeChat.id : null,
@@ -171,13 +207,13 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
           if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
           
           typingTimeoutRef.current = setTimeout(() => {
-              socket.emit("stop_typing", {
+              socket.emit(SOCKET_EVENTS.USER_STOPPED_TYPING, {
                   username: user.username,
                   user_id: user.id,
                   channel_id: activeChat.type === "channel" ? activeChat.id : null,
                   recipient_id: activeChat.type === "dm" ? activeChat.id : null,
               });
-          }, 2000);
+          }, APP_CONFIG.TYPING_TIMEOUT);
       }
   };
 
@@ -192,12 +228,67 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
   // Load initial messages & Listen for events
   useEffect(() => {
     setMessages([]);
+    messagesRef.current = [];
+    messagesLengthRef.current = 0;
     setPinnedMessages([]);
     setTypingUsers(new Set()); // Reset typing users on chat change
+    setHasMoreMessages(true);
+    setIsLoadingMore(false);
+    setFirstItemIndex(1000000); // Reset to large number for new chat
+    
+    // Load draft for this chat
+    if (activeChat) {
+      const draft = getDraft(activeChat.type, activeChat.id);
+      setInputValue(draft);
+      
+      // Mark notifications as read when switching to a chat
+      if (activeChat.type === "channel") {
+        markChannelAsRead(activeChat.id);
+      } else if (activeChat.type === "dm") {
+        markUserAsRead(activeChat.id);
+      }
+    } else {
+      setInputValue("");
+    }
     
     const onMessageHistory = (msgs: Message[]) => {
       setMessages(msgs);
+      messagesRef.current = msgs;
+      messagesLengthRef.current = msgs.length;
       setPinnedMessages(msgs.filter(m => m.pinned));
+      setHasMoreMessages(msgs.length >= APP_CONFIG.MESSAGE_PAGE_SIZE);
+      setIsLoadingMore(false);
+      isAtBottomRef.current = true; // Reset to bottom on new chat
+      // Scroll to bottom after loading initial messages
+      setTimeout(() => {
+        if (msgs.length > 0) {
+          virtuosoRef.current?.scrollToIndex({
+            index: msgs.length - 1,
+            align: "end",
+            behavior: "auto",
+          });
+        }
+      }, 150);
+    };
+    
+    const onMoreMessages = (msgs: Message[]) => {
+      if (msgs.length === 0) {
+        setHasMoreMessages(false);
+        setIsLoadingMore(false);
+        return;
+      }
+      
+      setMessages((prev) => {
+        const newMessages = [...msgs, ...prev];
+        messagesRef.current = newMessages;
+        messagesLengthRef.current = newMessages.length;
+        // Adjust firstItemIndex to maintain scroll position
+        setFirstItemIndex(prevIndex => prevIndex - msgs.length);
+        return newMessages;
+      });
+      
+      setIsLoadingMore(false);
+      setHasMoreMessages(msgs.length >= APP_CONFIG.MESSAGE_PAGE_SIZE);
     };
 
     const onReceiveMessage = (msg: Message) => {
@@ -205,7 +296,22 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
         (activeChat.type === "channel" && msg.channel_id === activeChat.id) ||
         (activeChat.type === "dm" && (msg.sender_id === activeChat.id || msg.recipient_id === activeChat.id || (msg.sender_id === user?.id && msg.recipient_id === activeChat.id)))
       ) {
-        setMessages((prev) => [...prev, msg]);
+        setMessages((prev) => {
+          const newMessages = [...prev, msg];
+          messagesRef.current = newMessages;
+          messagesLengthRef.current = newMessages.length;
+          // Auto-scroll to bottom if user is at bottom or sent the message
+          if (isAtBottomRef.current || msg.sender_id === user?.id) {
+            setTimeout(() => {
+              virtuosoRef.current?.scrollToIndex({
+                index: newMessages.length - 1,
+                align: "end",
+                behavior: "smooth",
+              });
+            }, 50);
+          }
+          return newMessages;
+        });
       }
       // Clear typing indicator for the sender if they send a message
       setTypingUsers(prev => {
@@ -316,67 +422,78 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
         });
     };
 
-    socket.on("message_history", onMessageHistory);
-    socket.on("receive_message", onReceiveMessage);
-    socket.on("message_edited", onMessageEdited);
-    socket.on("message_deleted", onMessageDeleted);
-    socket.on("reaction_update", onReactionUpdate);
-    socket.on("message_pinned", onMessagePinned);
-    socket.on("pinned_messages", onPinnedMessages);
-    socket.on("user_updated", onUserUpdated);
-    socket.on("user_typing", onUserTyping);
-    socket.on("user_stopped_typing", onUserStoppedTyping);
+    socket.on(SOCKET_EVENTS.MESSAGE_HISTORY, onMessageHistory);
+    socket.on(SOCKET_EVENTS.MORE_MESSAGES, onMoreMessages);
+    socket.on(SOCKET_EVENTS.RECEIVE_MESSAGE, onReceiveMessage);
+    socket.on(SOCKET_EVENTS.MESSAGE_EDITED, onMessageEdited);
+    socket.on(SOCKET_EVENTS.MESSAGE_DELETED, onMessageDeleted);
+    socket.on(SOCKET_EVENTS.REACTION_UPDATE, onReactionUpdate);
+    socket.on(SOCKET_EVENTS.MESSAGE_PINNED, onMessagePinned);
+    socket.on(SOCKET_EVENTS.PINNED_MESSAGES, onPinnedMessages);
+    socket.on(SOCKET_EVENTS.USER_UPDATED, onUserUpdated);
+    socket.on(SOCKET_EVENTS.USER_TYPING, onUserTyping);
+    socket.on(SOCKET_EVENTS.USER_STOPPED_TYPING, onUserStoppedTyping);
     
     // Initial fetch of pinned messages
-    socket.emit("get_pinned_messages", { 
-         channelId: activeChat.type === "channel" ? activeChat.id : null,
-         recipientId: activeChat.type === "dm" ? activeChat.id : null,
-         myId: user?.id
-    });
+    if (activeChat && user) {
+      socket.emit(SOCKET_EVENTS.GET_PINNED_MESSAGES, { 
+           channelId: activeChat.type === "channel" ? activeChat.id : null,
+           recipientId: activeChat.type === "dm" ? activeChat.id : null,
+           myId: user.id
+      });
+    }
 
     return () => {
-      socket.off("message_history", onMessageHistory);
-      socket.off("receive_message", onReceiveMessage);
-      socket.off("message_edited", onMessageEdited);
-      socket.off("message_deleted", onMessageDeleted);
-      socket.off("reaction_update", onReactionUpdate);
-      socket.off("message_pinned", onMessagePinned);
-      socket.off("pinned_messages", onPinnedMessages);
-      socket.off("user_updated", onUserUpdated);
-      socket.off("user_typing", onUserTyping);
-      socket.off("user_stopped_typing", onUserStoppedTyping);
+      socket.off(SOCKET_EVENTS.MESSAGE_HISTORY, onMessageHistory);
+      socket.off(SOCKET_EVENTS.MORE_MESSAGES, onMoreMessages);
+      socket.off(SOCKET_EVENTS.RECEIVE_MESSAGE, onReceiveMessage);
+      socket.off(SOCKET_EVENTS.MESSAGE_EDITED, onMessageEdited);
+      socket.off(SOCKET_EVENTS.MESSAGE_DELETED, onMessageDeleted);
+      socket.off(SOCKET_EVENTS.REACTION_UPDATE, onReactionUpdate);
+      socket.off(SOCKET_EVENTS.MESSAGE_PINNED, onMessagePinned);
+      socket.off(SOCKET_EVENTS.PINNED_MESSAGES, onPinnedMessages);
+      socket.off(SOCKET_EVENTS.USER_UPDATED, onUserUpdated);
+      socket.off(SOCKET_EVENTS.USER_TYPING, onUserTyping);
+      socket.off(SOCKET_EVENTS.USER_STOPPED_TYPING, onUserStoppedTyping);
+      
+      // Clear draft save timeout
+      if (draftSaveTimeoutRef.current) {
+          clearTimeout(draftSaveTimeoutRef.current);
+      }
     };
   }, [activeChat, user?.id]);
 
-  // Auto scroll to bottom
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+  // Handle start reached (scrolled to top) - load more messages
+  const handleStartReached = useCallback(() => {
+    if (isLoadingMore || !hasMoreMessages || !activeChat || !user || messagesLengthRef.current === 0) return;
+    
+    setIsLoadingMore(true);
+    // Use ref to get the current oldest message without causing re-renders
+    const currentMessages = messagesRef.current;
+    if (currentMessages.length === 0) {
+      setIsLoadingMore(false);
+      return;
     }
-  }, [messages]);
+    
+    const oldestMessage = currentMessages[0];
+    socket.emit(SOCKET_EVENTS.LOAD_MORE_MESSAGES, {
+      channel_id: activeChat.type === "channel" ? activeChat.id : null,
+      recipient_id: activeChat.type === "dm" ? activeChat.id : null,
+      before_message_id: oldestMessage?.id,
+      limit: APP_CONFIG.MESSAGE_PAGE_SIZE,
+      myId: user.id,
+    });
+  }, [isLoadingMore, hasMoreMessages, activeChat, user]);
 
-  // Play notification sound on new message
-  useEffect(() => {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage && lastMessage.sender_id !== user?.id) {
-          // Request permission if needed
-          if (Notification.permission === "default") {
-              Notification.requestPermission();
-          }
-          
-          if (!document.hasFocus()) {
-              // Browser Notification
-              if (Notification.permission === "granted") {
-                  new Notification(`New message from ${lastMessage.username}`, {
-                      body: lastMessage.message,
-                      icon: "/icon.png" // Assuming there is an icon, or default
-                  });
-              }
-              // Toast Notification
-              toast.info(`New message from ${lastMessage.username}`);
-          }
-      }
-  }, [messages, user?.id]);
+  // Track scroll position to determine if user is at bottom
+  const handleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
+    // User is at bottom if endIndex is near the last message
+    // Use ref to avoid re-renders
+    isAtBottomRef.current = range.endIndex >= messagesLengthRef.current - 3;
+  }, []);
+
+  // Notification handling is now done in NotificationContext
+  // This effect is kept for backward compatibility but notifications are handled globally
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
@@ -407,7 +524,7 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
     if ((!inputValue.trim() && !selectedFile) || !user) return;
 
     if (editingMessage) {
-        socket.emit("edit_message", {
+        socket.emit(SOCKET_EVENTS.EDIT_MESSAGE, {
             message_id: editingMessage.id,
             new_message: inputValue,
             user_id: user.id,
@@ -416,6 +533,10 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
         });
         setEditingMessage(null);
         setInputValue("");
+        // Clear draft
+        if (activeChat) {
+            clearDraft(activeChat.type, activeChat.id);
+        }
         return;
     }
 
@@ -430,7 +551,7 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
         formData.append("file", selectedFile);
 
         try {
-            const res = await fetch("http://localhost:3001/api/upload", {
+            const res = await fetch(API_ENDPOINTS.UPLOAD, {
                 method: "POST",
                 body: formData, 
             });
@@ -462,10 +583,14 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
       file_size: fileSize,
     };
 
-    socket.emit("send_message", messageData);
+    socket.emit(SOCKET_EVENTS.SEND_MESSAGE, messageData);
     setInputValue("");
     setReplyTo(null);
     clearFileSelection();
+    // Clear draft after sending
+    if (activeChat) {
+        clearDraft(activeChat.type, activeChat.id);
+    }
   };
 
   const handleEmojiClick = (emojiData: any) => {
@@ -499,8 +624,8 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
           return;
       }
       
-      const endpoint = isPinned ? "/api/messages/unpin" : "/api/messages/pin";
-      fetch(`http://localhost:3001${endpoint}`, {
+      const endpoint = isPinned ? API_ENDPOINTS.MESSAGES_UNPIN : API_ENDPOINTS.MESSAGES_PIN;
+      fetch(endpoint, {
           method: "POST",
           headers: {
               "Content-Type": "application/json",
@@ -510,24 +635,81 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
       }).catch(err => console.error("Pin error", err));
   };
   
-  const handleJumpToMessage = (messageId: number) => {
+  const handleJumpToMessage = (messageId: number, channelId?: number, userId?: number) => {
       setIsPinnedOpen(false);
       
-      // Allow time for sheet to close
-      setTimeout(() => {
-          const element = document.getElementById(`message-${messageId}`);
-          if (element) {
-              element.scrollIntoView({ behavior: "smooth", block: "center" });
-              
-              // Add highlight effect
-              element.classList.add("bg-yellow-500/20");
-              setTimeout(() => {
-                  element.classList.remove("bg-yellow-500/20");
-              }, 2000);
-          } else {
-              toast.info("Message is too old and not currently loaded.");
+      // If message is in a different chat, we need to load it
+      if (channelId && activeChat.type === "channel" && activeChat.id !== channelId) {
+          // Message is in a different channel - will be handled by parent
+          if (onJumpToMessage) {
+              onJumpToMessage(messageId, channelId, userId);
           }
-      }, 150);
+          return;
+      }
+      
+      if (userId && activeChat.type === "dm" && activeChat.id !== userId) {
+          // Message is in a different DM - will be handled by parent
+          if (onJumpToMessage) {
+              onJumpToMessage(messageId, channelId, userId);
+          }
+          return;
+      }
+      
+      // Message is in current chat, scroll to it using Virtuoso
+      const messageIndex = messages.findIndex(m => m.id === messageId);
+      if (messageIndex !== -1) {
+          // Message is already loaded, scroll to it
+          setTimeout(() => {
+              virtuosoRef.current?.scrollToIndex({
+                  index: messageIndex,
+                  align: "center",
+                  behavior: "smooth",
+              });
+              
+              // Add highlight effect after scroll
+              setTimeout(() => {
+                  const element = document.getElementById(`message-${messageId}`);
+                  if (element) {
+                      element.classList.add("bg-yellow-500/20", "dark:bg-yellow-500/10");
+                      setTimeout(() => {
+                          element.classList.remove("bg-yellow-500/20", "dark:bg-yellow-500/10");
+                      }, 2000);
+                  }
+              }, 300);
+          }, 100);
+      } else {
+          // Message not in current view, try to load it
+          toast.info("Chargement du message...");
+          socket.emit("load_more_messages", {
+              channelId: activeChat.type === "channel" ? activeChat.id : null,
+              recipientId: activeChat.type === "dm" ? activeChat.id : null,
+              myId: user?.id,
+              beforeMessageId: messageId,
+              limit: 50
+          });
+          
+          // Try again after messages are loaded
+          setTimeout(() => {
+              const retryIndex = messages.findIndex(m => m.id === messageId);
+              if (retryIndex !== -1) {
+                  virtuosoRef.current?.scrollToIndex({
+                      index: retryIndex,
+                      align: "center",
+                      behavior: "smooth",
+                  });
+                  
+                  setTimeout(() => {
+                      const element = document.getElementById(`message-${messageId}`);
+                      if (element) {
+                          element.classList.add("bg-yellow-500/20", "dark:bg-yellow-500/10");
+                          setTimeout(() => {
+                              element.classList.remove("bg-yellow-500/20", "dark:bg-yellow-500/10");
+                          }, 2000);
+                      }
+                  }, 300);
+              }
+          }, 500);
+      }
   };
 
   const openLightbox = (msgId: number) => {
@@ -576,8 +758,8 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
                 <SheetHeader>
                   <SheetTitle>Pinned Messages</SheetTitle>
                 </SheetHeader>
-                <ScrollArea className="h-[calc(100vh-100px)] mt-4 pr-4">
-                   <div className="space-y-4">
+                <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+                   <div className="space-y-4 px-4 pb-4">
                       {pinnedMessages.length === 0 ? (
                           <p className="text-center text-muted-foreground text-sm">No pinned messages</p>
                       ) : (
@@ -656,201 +838,60 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
       {/* Main Content Area */}
       {/* Standard Chat View */}
       <>
-          <ScrollArea className="flex-1 p-4 min-h-0">
-            <div className="space-y-4">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  id={`message-${msg.id}`}
-                  className="group flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-zinc-900/50 p-2 -mx-2 rounded-lg transition-colors relative"
-                >
-                  <HoverCard>
-                      <HoverCardTrigger asChild>
-                          <Avatar className="h-10 w-10 mt-0.5 cursor-pointer hover:opacity-80 transition-opacity">
-                            <AvatarImage src={msg.avatar} />
-                            <AvatarFallback style={{ backgroundColor: msg.avatar_color }}>
-                                {msg.username[0].toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                      </HoverCardTrigger>
-                      <HoverCardContent className="w-80">
-                          <div className="flex justify-between space-x-4">
-                              <Avatar className="h-12 w-12">
-                                  <AvatarImage src={msg.avatar} />
-                                  <AvatarFallback style={{ backgroundColor: msg.avatar_color }}>
-                                      {msg.username[0].toUpperCase()}
-                                  </AvatarFallback>
-                              </Avatar>
-                              <div className="space-y-1">
-                                  <h4 className="text-sm font-semibold">@{msg.username}</h4>
-                                  <p className="text-xs text-muted-foreground">
-                                      {msg.bio || "No bio available"}
-                                  </p>
-                                  <div className="flex items-center pt-2">
-                                      <CalendarDays className="mr-2 h-4 w-4 opacity-70" />{" "}
-                                      <span className="text-xs text-muted-foreground">
-                                          Member since {msg.created_at ? format(new Date(msg.created_at), "MMMM yyyy") : "Unknown"}
-                                      </span>
-                                  </div>
-                              </div>
-                          </div>
-                      </HoverCardContent>
-                  </HoverCard>
-                  
-                  <div className="flex-1 min-w-0">
-                     <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-sm hover:underline cursor-pointer">{msg.username}</span>
-                        <span className="text-xs text-muted-foreground">
-                            {format(new Date(msg.date), "MMM d, yyyy h:mm a")}
-                        </span>
-                        {msg.edited && <span className="text-[10px] text-muted-foreground">(edited)</span>}
-                     </div>
-
-                     {/* Reply Context */}
-                     {msg.reply_to_id && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1 opacity-70 border-l-2 pl-2 border-muted">
-                            <Reply className="h-3 w-3" />
-                            <span className="truncate">Replying to {msg.reply_username}</span>
-                        </div>
-                     )}
-                     
-                    <div className={`text-sm leading-relaxed text-foreground ${msg.deleted ? "italic text-muted-foreground" : ""}`}>
-                      {!!msg.pinned && <Pin className="h-3 w-3 inline mr-1 text-yellow-500 fill-yellow-500" />}
-                      
-                      {/* File Attachment */}
-                      {msg.file_path && (
-                          <div className="my-2">
-                              {(msg.file_type?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp)$/i.test(msg.file_name || "")) ? (
-                                  <div className="relative max-w-sm group/image overflow-hidden rounded-md border bg-muted">
-                                    <img 
-                                      src={`http://localhost:3001${msg.file_path}`} 
-                                      alt={msg.file_name} 
-                                      className="max-h-80 w-full object-cover cursor-zoom-in transition-transform hover:scale-[1.02]"
-                                      onClick={() => openLightbox(msg.id)}
-                                    />
-                                  </div>
-                              ) : msg.file_type?.startsWith("video/") ? (
-                                  <video 
-                                    controls 
-                                    className="max-w-sm rounded-md max-h-80 bg-black"
-                                    src={`http://localhost:3001${msg.file_path}`}
-                                  >
-                                    Your browser does not support the video tag.
-                                  </video>
-                              ) : (
-                                  <div className="flex items-center gap-3 p-3 bg-secondary/50 border border-border/50 rounded-md max-w-sm group/file hover:bg-secondary/70 transition-colors">
-                                      <div className="bg-primary/10 p-2.5 rounded-full">
-                                        <FileIcon className="h-6 w-6 text-primary" />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="font-medium truncate text-sm text-foreground">
-                                          {msg.file_name}
-                                        </div>
-                                        <div className="text-xs text-muted-foreground">
-                                          {formatFileSize(msg.file_size || 0)}
-                                        </div>
-                                      </div>
-                                      <a 
-                                        href={`http://localhost:3001${msg.file_path}`} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="p-2 hover:bg-background rounded-full transition-colors text-muted-foreground hover:text-foreground"
-                                        title="Download"
-                                      >
-                                          <Download className="h-5 w-5" />
-                                      </a>
-                                  </div>
-                              )}
-                          </div>
-                      )}
-
-                      <p className="whitespace-pre-wrap break-words">
-                          {msg.message.split(/(@\w+)/g).map((part, i) => {
-                              if (part.startsWith("@")) {
-                                  return <span key={i} className="bg-primary/10 text-primary rounded px-1 font-medium cursor-pointer hover:bg-primary/20 transition-colors">{part}</span>;
-                              }
-                              return part;
-                          })}
-                      </p>
-                      
-                      {/* Reactions */}
-                      {msg.reactions && msg.reactions.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                              {Object.values(msg.reactions.reduce((acc: any, r) => {
-                                  if (!acc[r.emoji]) acc[r.emoji] = { emoji: r.emoji, count: 0, users: [] };
-                                  acc[r.emoji].count++;
-                                  acc[r.emoji].users.push(r.username);
-                                  return acc;
-                              }, {})).map((r: any) => (
-                                  <div 
-                                    key={r.emoji} 
-                                    className="bg-muted/50 border border-transparent hover:border-muted-foreground/20 rounded-[4px] px-1.5 py-0.5 text-xs flex items-center gap-1 cursor-pointer transition-colors"
-                                    title={r.users.join(", ")}
-                                    onClick={() => handleReaction(msg.id, r.emoji)}
-                                  >
-                                      <span>{r.emoji}</span>
-                                      <span className="font-semibold ml-1">{r.count}</span>
-                                  </div>
-                              ))}
-                          </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Message Actions - Floating top right */}
-                  {!msg.deleted && (
-                      <div className="absolute right-4 -top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-background border shadow-sm rounded-md flex items-center p-0.5 z-10">
-                          <Popover>
-                              <PopoverTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-muted rounded-sm">
-                                      <Smile className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                                  </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-full p-0 border-none">
-                                  <EmojiPicker 
-                                    theme={theme === "dark" ? Theme.DARK : Theme.LIGHT}
-                                    onEmojiClick={(emoji) => handleReaction(msg.id, emoji.emoji)} 
-                                  />
-                              </PopoverContent>
-                          </Popover>
-
-                          <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-muted rounded-sm" onClick={() => setReplyTo(msg)}>
-                              <Reply className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                          </Button>
-
-                          {msg.sender_id === user?.id && (
-                              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-muted rounded-sm" onClick={() => {
-                                  setEditingMessage(msg);
-                                  setInputValue(msg.message);
-                              }}>
-                                  <Edit2 className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                              </Button>
-                          )}
-
-                          <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-muted rounded-sm">
-                                      <MoreVertical className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                                  </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => handlePinMessage(msg.id, !!msg.pinned)}>
-                                      <Pin className="mr-2 h-4 w-4" /> {msg.pinned ? "Unpin Message" : "Pin Message"}
-                                  </DropdownMenuItem>
-                                  {msg.sender_id === user?.id && (
-                                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteMessage(msg.id)}>
-                                          <Trash2 className="mr-2 h-4 w-4" /> Delete Message
-                                      </DropdownMenuItem>
-                                  )}
-                              </DropdownMenuContent>
-                          </DropdownMenu>
-                      </div>
-                  )}
+          <div className="flex-1 min-h-0 relative">
+            {isLoadingMore && (
+              <div className="absolute top-0 left-0 right-0 flex justify-center py-2 bg-background/95 backdrop-blur-sm z-20">
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  Chargement des messages...
                 </div>
-              ))}
-              <div ref={scrollRef} />
-            </div>
-          </ScrollArea>
+              </div>
+            )}
+            {messages.length === 0 && !isLoadingMore ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center text-muted-foreground">
+                  <p className="text-sm">Aucun message pour le moment</p>
+                  <p className="text-xs mt-1">Soyez le premier à envoyer un message !</p>
+                </div>
+              </div>
+            ) : (
+              <Virtuoso
+                ref={virtuosoRef}
+                style={{ height: "100%" }}
+                data={messages}
+                firstItemIndex={firstItemIndex}
+                initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
+                startReached={handleStartReached}
+                followOutput="auto"
+                rangeChanged={handleRangeChanged}
+                atBottomStateChange={(isAtBottom) => {
+                  isAtBottomRef.current = isAtBottom;
+                }}
+                overscan={APP_CONFIG.VIRTUALIZATION_OVERSCAN}
+                itemContent={(index, msg) => (
+                  <div className="px-4 py-2">
+                    <MessageItem
+                      key={msg.id}
+                      msg={msg}
+                      currentUserId={user?.id}
+                      onEdit={(messageId) => {
+                        const message = messages.find(m => m.id === messageId);
+                        if (message) {
+                          setEditingMessage(message);
+                          setInputValue(message.message);
+                        }
+                      }}
+                      onDelete={handleDeleteMessage}
+                      onReply={setReplyTo}
+                      onPin={handlePinMessage}
+                      onOpenLightbox={openLightbox}
+                      onReaction={handleReaction}
+                    />
+                  </div>
+                )}
+              />
+            )}
+          </div>
 
           {/* Image Lightbox/Carousel */}
           <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
@@ -977,7 +1018,43 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
                 </div>
             )}
             
-            <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
+            <form 
+              onSubmit={handleSendMessage} 
+              className="flex gap-2 items-end relative"
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const files = Array.from(e.dataTransfer.files);
+                if (files.length > 0) {
+                  const file = files[0];
+                  // Validate file
+                  const maxSize = APP_CONFIG.MAX_FILE_SIZE;
+                  if (file.size > maxSize) {
+                    toast.error(`Le fichier est trop volumineux (max ${formatFileSize(maxSize)})`);
+                    return;
+                  }
+                  setSelectedFile(file);
+                  // Create preview for images
+                  if (file.type.startsWith("image/")) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      setFilePreview(reader.result as string);
+                    };
+                    reader.readAsDataURL(file);
+                  } else {
+                    setFilePreview(null);
+                  }
+                }
+              }}
+            >
                <input 
                  type="file" 
                  ref={fileInputRef} 
@@ -1015,8 +1092,38 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
                 className="flex-1"
               />
               
-              {showMentions && (
+              {showMentions && activeChat.type === "channel" && (
                   <div className="absolute bottom-16 left-4 bg-popover border rounded-md shadow-md w-64 z-50 max-h-40 overflow-y-auto p-1">
+                      {/* Special mentions */}
+                      {(!mentionQuery || "everyone".startsWith(mentionQuery.toLowerCase())) && (
+                          <div 
+                              className="flex items-center gap-2 p-2 hover:bg-muted rounded cursor-pointer text-sm"
+                              onClick={() => handleMentionSelect("everyone")}
+                          >
+                              <div className="h-6 w-6 rounded-full bg-red-500 flex items-center justify-center text-white text-xs font-bold">
+                                  @
+                              </div>
+                              <div className="flex flex-col">
+                                  <span className="font-semibold">@everyone</span>
+                                  <span className="text-xs text-muted-foreground">Mentionne tous les membres</span>
+                              </div>
+                          </div>
+                      )}
+                      {(!mentionQuery || "here".startsWith(mentionQuery.toLowerCase())) && (
+                          <div 
+                              className="flex items-center gap-2 p-2 hover:bg-muted rounded cursor-pointer text-sm"
+                              onClick={() => handleMentionSelect("here")}
+                          >
+                              <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs font-bold">
+                                  @
+                              </div>
+                              <div className="flex flex-col">
+                                  <span className="font-semibold">@here</span>
+                                  <span className="text-xs text-muted-foreground">Mentionne les membres en ligne</span>
+                              </div>
+                          </div>
+                      )}
+                      {/* User mentions */}
                       {channelMembers
                           .filter(m => m.username.toLowerCase().includes(mentionQuery.toLowerCase()))
                           .map(member => (
@@ -1033,6 +1140,21 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
                               </div>
                           ))
                       }
+                      {channelMembers.filter(m => m.username.toLowerCase().includes(mentionQuery.toLowerCase())).length === 0 && 
+                       mentionQuery && 
+                       !"everyone".startsWith(mentionQuery.toLowerCase()) && 
+                       !"here".startsWith(mentionQuery.toLowerCase()) && (
+                          <div className="p-2 text-sm text-muted-foreground text-center">
+                              Aucun utilisateur trouvé
+                          </div>
+                      )}
+                  </div>
+              )}
+              {showMentions && activeChat.type === "dm" && (
+                  <div className="absolute bottom-16 left-4 bg-popover border rounded-md shadow-md w-64 z-50 max-h-40 overflow-y-auto p-1">
+                      <div className="p-2 text-sm text-muted-foreground text-center">
+                          Les mentions ne sont pas disponibles en DM
+                      </div>
                   </div>
               )}
 

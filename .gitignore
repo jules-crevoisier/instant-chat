@@ -8,3 +8,5 @@ backend/ENV_SETUP.md
 backend/ecosystem.config.js
 backend/APACHE_CONFIG.md
 backend/PM2_TROUBLESHOOTING.md
+backend/avatars_cache/
+backend/chat.db
