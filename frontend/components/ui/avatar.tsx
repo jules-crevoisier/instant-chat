@@ -37,8 +37,19 @@ function AvatarImage({
       return;
     }
 
+    // Handle Blob objects by creating object URL
+    if (src instanceof Blob) {
+      const objectUrl = URL.createObjectURL(src);
+      setImageSrc(objectUrl);
+      setHasError(false);
+      return () => URL.revokeObjectURL(objectUrl);
+    }
+
+    // Ensure src is a string
+    const srcString = typeof src === "string" ? src : String(src);
+
     // Validate URL to prevent 404s on invalid inputs (like emojis)
-    const isValidSrc = src && (src.startsWith("http") || src.startsWith("/") || src.startsWith("data:"));
+    const isValidSrc = srcString && (srcString.startsWith("http") || srcString.startsWith("/") || srcString.startsWith("data:"));
     
     if (!isValidSrc) {
       setImageSrc(undefined);
@@ -47,18 +58,18 @@ function AvatarImage({
     }
 
     // If it's an external URL (http/https), use proxy
-    if (src.startsWith("http://") || src.startsWith("https://")) {
+    if (srcString.startsWith("http://") || srcString.startsWith("https://")) {
       // Check if it's already a local/proxied URL
-      if (src.includes(API_URL) || src.includes("localhost:3001") || src.includes("127.0.0.1:3001")) {
-        setImageSrc(src);
+      if (srcString.includes(API_URL) || srcString.includes("localhost:3001") || srcString.includes("127.0.0.1:3001")) {
+        setImageSrc(srcString);
       } else {
         // Use proxy for external images to avoid CORS and rate limiting issues
-        const proxyUrl = API_ENDPOINTS.AVATAR_PROXY(src);
+        const proxyUrl = API_ENDPOINTS.AVATAR_PROXY(srcString);
         setImageSrc(proxyUrl);
       }
     } else {
       // Local path or data URL
-      setImageSrc(src);
+      setImageSrc(srcString);
     }
     setHasError(false);
   }, [src]);

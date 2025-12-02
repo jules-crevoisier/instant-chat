@@ -1,0 +1,43 @@
+# Development files
+.git
+.gitignore
+*.md
+README.md
+BUILD.md
+.eslintrc*
+.eslintignore
+tsconfig.json
+tsconfig.tsbuildinfo
+next.config.ts
+postcss.config.mjs
+eslint.config.mjs
+
+# Source files (not needed in production)
+app/
+components/
+context/
+hooks/
+lib/
+public/
+
+# Build artifacts
+.next/
+out/
+dist/
+build/
+
+# Development dependencies
+node_modules/@types/
+node_modules/typescript/
+node_modules/eslint/
+node_modules/@tailwindcss/
+node_modules/tailwindcss/
+node_modules/tw-animate-css/
+
+# Test files
+**/*.test.*
+**/*.spec.*
+**/__tests__/
+**/__mocks__/
+
+

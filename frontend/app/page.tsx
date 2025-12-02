@@ -3,6 +3,7 @@
 import { useAuth } from "@/context/auth-context";
 import { AuthScreen } from "@/components/auth/auth-screen";
 import { ChatLayout } from "@/components/chat/chat-layout";
+import { FirstRunDialog } from "@/components/settings/first-run-dialog";
 import { Loader2 } from "lucide-react";
 
 export default function Home() {
@@ -10,15 +11,28 @@ export default function Home() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <>
+        <FirstRunDialog />
+        <div className="flex h-screen items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </>
     );
   }
 
   if (!user) {
-    return <AuthScreen />;
+    return (
+      <>
+        <FirstRunDialog />
+        <AuthScreen />
+      </>
+    );
   }
 
-  return <ChatLayout />;
+  return (
+    <>
+      <FirstRunDialog />
+      <ChatLayout />
+    </>
+  );
 }

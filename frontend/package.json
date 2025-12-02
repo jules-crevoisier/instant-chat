@@ -2,11 +2,21 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
+  "description": "Instant Chat - Real-time chat application",
+  "author": "Instant Chat",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron": "electron .",
+    "electron:dev": "cross-env NODE_ENV=development electron .",
+    "clean:dist": "rimraf dist",
+    "build:electron": "cross-env ELECTRON_BUILD=true next build",
+    "build:win": "npm run clean:dist && npm run build:electron && electron-builder --win",
+    "build:win:portable": "npm run clean:dist && npm run build:electron && electron-builder --win portable",
+    "dist": "npm run clean:dist && npm run build:electron && electron-builder"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -48,8 +58,13 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^7.0.3",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "eslint": "^9",
     "eslint-config-next": "16.0.6",
+    "express": "^4.22.1",
+    "rimraf": "^6.1.2",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.4.0",
     "typescript": "^5"

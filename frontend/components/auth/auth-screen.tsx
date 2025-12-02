@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/form";
 import { toast } from "sonner";
 import { API_ENDPOINTS } from "@/lib/config";
+import { ServerConfigDialog } from "@/components/settings/server-config-dialog";
+import { Settings2 } from "lucide-react";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -41,6 +43,7 @@ const registerSchema = z.object({
 export function AuthScreen() {
   const { login } = useAuth();
   const [activeTab, setActiveTab] = useState("login");
+  const [serverConfigOpen, setServerConfigOpen] = useState(false);
 
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -97,7 +100,18 @@ export function AuthScreen() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4 dark:bg-zinc-950">
+    <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4 dark:bg-zinc-950 relative">
+      {/* Server Configuration Button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute top-4 right-4"
+        onClick={() => setServerConfigOpen(true)}
+        title="Server Configuration"
+      >
+        <Settings2 className="h-5 w-5" />
+      </Button>
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-md">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="login">Login</TabsTrigger>
@@ -192,6 +206,12 @@ export function AuthScreen() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Server Configuration Dialog */}
+      <ServerConfigDialog
+        open={serverConfigOpen}
+        onOpenChange={setServerConfigOpen}
+      />
     </div>
   );
 }

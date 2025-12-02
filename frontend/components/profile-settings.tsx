@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,12 +22,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings, Moon, Sun, Laptop } from "lucide-react";
+import { Settings, Moon, Sun, Laptop, CheckCircle2, AlertCircle } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { socket } from "@/lib/socket";
-import { API_ENDPOINTS } from "@/lib/config";
+import { API_ENDPOINTS, getServerUrl, setServerUrl, validateServerUrl } from "@/lib/config";
+import { Separator } from "@/components/ui/separator";
 
 export function ProfileSettings() {
   const { user, token } = useAuth();
@@ -39,6 +40,19 @@ export function ProfileSettings() {
   const [avatar, setAvatar] = useState(user?.avatar || "");
   const [status, setStatus] = useState(user?.status || "online");
   const [avatarColor, setAvatarColor] = useState(user?.avatar_color || "#000000");
+  
+  // Server configuration state
+  const [serverUrl, setServerUrlState] = useState("");
+  const [isValidating, setIsValidating] = useState(false);
+  const [isValid, setIsValid] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      const currentUrl = getServerUrl();
+      setServerUrlState(currentUrl);
+      setIsValid(null);
+    }
+  }, [isOpen]);
 
   const handleSave = async () => {
     if (!user || !token) return;
@@ -193,8 +207,97 @@ export function ProfileSettings() {
               </Button>
             </div>
           </div>
+
+          <Separator className="my-2" />
+
+          <div className="space-y-2">
+            <Label className="text-base font-semibold">Server Configuration</Label>
+            <div className="space-y-2">
+              <Label htmlFor="server-url" className="text-sm">Server URL</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="server-url"
+                  type="url"
+                  placeholder="http://localhost:3001"
+                  value={serverUrl}
+                  onChange={(e) => {
+                    setServerUrlState(e.target.value);
+                    setIsValid(null);
+                  }}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={async () => {
+                    if (!serverUrl.trim()) {
+                      setIsValid(false);
+                      return;
+                    }
+                    setIsValidating(true);
+                    try {
+                      const isValidUrl = await validateServerUrl(serverUrl.trim());
+                      setIsValid(isValidUrl);
+                      if (isValidUrl) {
+                        toast.success("Server URL is valid");
+                      } else {
+                        toast.error("Cannot connect to server. Please check the URL.");
+                      }
+                    } catch (error) {
+                      setIsValid(false);
+                      toast.error("Error validating server URL");
+                    } finally {
+                      setIsValidating(false);
+                    }
+                  }}
+                  disabled={isValidating || !serverUrl.trim()}
+                >
+                  {isValidating ? "Validating..." : "Validate"}
+                </Button>
+              </div>
+              {isValid === true && (
+                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Server URL is valid and accessible</span>
+                </div>
+              )}
+              {isValid === false && (
+                <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>Cannot connect to server. Please check the URL.</span>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Enter the full URL including protocol (http:// or https://) and port if needed.
+              </p>
+            </div>
+          </div>
         </div>
         <DialogFooter>
+          <Button 
+            type="button"
+            variant="outline"
+            onClick={async () => {
+              if (!serverUrl.trim()) {
+                toast.error("Server URL cannot be empty");
+                return;
+              }
+              if (isValid === false) {
+                toast.error("Please validate the server URL before saving");
+                return;
+              }
+              const trimmedUrl = serverUrl.trim();
+              setServerUrl(trimmedUrl);
+              socket.disconnect();
+              setTimeout(() => {
+                toast.success("Server URL updated. The connection will be re-established.");
+                window.location.reload();
+              }, 500);
+            }}
+            disabled={!serverUrl.trim() || isValid === false}
+          >
+            Save Server URL
+          </Button>
           <Button type="submit" onClick={handleSave} disabled={isLoading}>
             {isLoading ? "Saving..." : "Save changes"}
           </Button>

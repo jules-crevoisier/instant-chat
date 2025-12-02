@@ -1,15 +1,42 @@
-import { io } from "socket.io-client";
-import { API_URL, SOCKET_EVENTS, APP_CONFIG } from "./config";
+import { io, Socket } from "socket.io-client";
+import { getServerUrl, SOCKET_EVENTS, APP_CONFIG } from "./config";
 
-export const socket = io(API_URL, {
-  autoConnect: false,
-  withCredentials: true,
-  reconnection: true,
-  reconnectionAttempts: APP_CONFIG.RECONNECTION_ATTEMPTS,
-  reconnectionDelay: APP_CONFIG.RECONNECTION_DELAY,
-  reconnectionDelayMax: 5000,
-  timeout: 20000,
-});
+// Create socket instance with current server URL
+let socketInstance: Socket | null = null;
+
+const createSocket = (): Socket => {
+  if (socketInstance) {
+    return socketInstance;
+  }
+  
+  socketInstance = io(getServerUrl(), {
+    autoConnect: false,
+    withCredentials: true,
+    reconnection: true,
+    reconnectionAttempts: APP_CONFIG.RECONNECTION_ATTEMPTS,
+    reconnectionDelay: APP_CONFIG.RECONNECTION_DELAY,
+    reconnectionDelayMax: 5000,
+    timeout: 20000,
+  });
+  
+  return socketInstance;
+};
+
+// Initialize socket
+export const socket = createSocket();
+
+/**
+ * Reinitialize socket with new server URL
+ * Call this when server URL changes
+ */
+export const reconnectSocket = (): Socket => {
+  if (socketInstance) {
+    socketInstance.disconnect();
+    socketInstance.removeAllListeners();
+  }
+  socketInstance = null;
+  return createSocket();
+};
 
 // Connection status tracking
 let connectionStatus: "connected" | "disconnected" | "connecting" | "error" = "disconnected";
