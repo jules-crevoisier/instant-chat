@@ -696,7 +696,7 @@ export function VoiceArea({ channelId, userId, users, onLeave, onToggleChat }: V
                    isSpeakingNow ? "border-green-500 shadow-[0_0_12px_rgba(34,197,94,0.4)]" : "border-border"
                )}>
                    {(localScreenStream || (localStream && localStream.getVideoTracks().length > 0)) ? (
-                       renderVideo(localScreenStream || localStream, !!localScreenStream, userId)
+                       renderVideo(localScreenStream || localStream || undefined, !!localScreenStream, userId)
                    ) : (
                        <>
                         <Avatar className={cn("h-24 w-24 mb-3 transition-transform duration-200 z-10", isSpeakingNow && "scale-110")}>
@@ -715,7 +715,7 @@ export function VoiceArea({ channelId, userId, users, onLeave, onToggleChat }: V
                    </div>
                    {isDeafened && (
                        <div className="absolute top-3 right-3 bg-destructive/90 p-1.5 rounded-full shadow-sm z-20">
-                           <HeadphonesOff className="h-4 w-4 text-white" />
+                           <HeadphoneOff className="h-4 w-4 text-white" />
                        </div>
                    )}
                </div>
@@ -740,7 +740,7 @@ export function VoiceArea({ channelId, userId, users, onLeave, onToggleChat }: V
                            p.isSpeaking ? "border-green-500 shadow-[0_0_12px_rgba(34,197,94,0.4)]" : "border-border"
                        )}>
                            {showVideoElement ? (
-                               renderVideo(streamToShow, isScreen, p.userId)
+                               renderVideo(streamToShow || undefined, isScreen, p.userId)
                            ) : (
                                <Avatar className={cn("h-24 w-24 mb-3 transition-transform duration-200 z-10", p.isSpeaking && "scale-110")}>
                                     <AvatarImage src={user?.avatar} />
@@ -755,7 +755,7 @@ export function VoiceArea({ channelId, userId, users, onLeave, onToggleChat }: V
 
                            {p.isDeafened && (
                                <div className="absolute top-3 right-3 bg-destructive/90 p-1.5 rounded-full shadow-sm z-20">
-                                   <HeadphonesOff className="h-4 w-4 text-white" />
+                                   <HeadphoneOff className="h-4 w-4 text-white" />
                                </div>
                            )}
 
