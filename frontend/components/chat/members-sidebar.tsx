@@ -53,7 +53,7 @@ export function MembersSidebar({ users }: MembersSidebarProps) {
   );
 
   return (
-    <div className="w-60 border-l bg-background hidden lg:flex flex-col h-full">
+    <div className="w-full md:w-60 border-l bg-background flex flex-col h-full">
       <div className="p-3 h-14 border-b flex items-center">
           <h2 className="font-semibold text-sm">Members</h2>
       </div>

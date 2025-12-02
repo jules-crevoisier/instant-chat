@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Phone, Paperclip, Smile, MoreVertical, Reply, Trash2, Edit2, Pin, X, CalendarDays, ArrowRight, FileIcon, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { Send, Phone, Paperclip, Smile, MoreVertical, Reply, Trash2, Edit2, Pin, X, CalendarDays, ArrowRight, FileIcon, Download, ChevronLeft, ChevronRight, Users, Menu } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import EmojiPicker, { Theme } from "emoji-picker-react";
 import { useTheme } from "next-themes";
@@ -85,9 +85,11 @@ interface ChatAreaProps {
   showVoiceChat: boolean;
   setShowVoiceChat: (show: boolean) => void;
   onJumpToMessage?: (messageId: number, channelId?: number, userId?: number) => void;
+  onOpenMembersSidebar?: () => void;
+  onOpenSidebar?: () => void;
 }
 
-export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId, setConnectedVoiceChannelId, showVoiceChat, setShowVoiceChat, onJumpToMessage }: ChatAreaProps) {
+export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId, setConnectedVoiceChannelId, showVoiceChat, setShowVoiceChat, onJumpToMessage, onOpenMembersSidebar, onOpenSidebar }: ChatAreaProps) {
   const { user, token } = useAuth();
   const { theme } = useTheme();
   const { markChannelAsRead, markUserAsRead } = useNotifications();
@@ -731,20 +733,43 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
   return (
     <div className="flex h-full flex-col relative">
       {/* Header */}
-      <div className="flex h-14 items-center justify-between border-b px-4 bg-white dark:bg-zinc-950">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold">{activeChat.name}</span>
+      <div className="flex h-14 items-center justify-between border-b px-2 sm:px-4 bg-white dark:bg-zinc-950">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {/* Mobile Menu Button - moved to header */}
+          {onOpenSidebar && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden touch-manipulation h-10 w-10 flex-shrink-0 bg-background/95 backdrop-blur-sm border border-border/50 shadow-sm"
+              onClick={onOpenSidebar}
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+          )}
+          <span className="font-semibold truncate ml-1">{activeChat.name}</span>
           {activeChat.type === "channel" && (
-             <span className="text-xs text-muted-foreground ml-2">
+             <span className="text-xs text-muted-foreground ml-2 hidden sm:inline">
                {isVoiceChannel ? "Voice Channel" : "Text Channel"}
              </span>
           )}
         </div>
         <div className="flex items-center gap-2">
+            {/* Mobile Members Button - only for channels */}
+            {activeChat.type === "channel" && onOpenMembersSidebar && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="lg:hidden touch-manipulation h-10 w-10"
+                onClick={onOpenMembersSidebar}
+              >
+                <Users className="h-5 w-5" />
+              </Button>
+            )}
             {/* Pinned Messages */}
             <Sheet open={isPinnedOpen} onOpenChange={setIsPinnedOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
+                <Button variant="ghost" size="icon" className="relative touch-manipulation h-10 w-10">
                   <Pin className="h-5 w-5" />
                   {pinnedMessages.length > 0 && (
                     <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] flex items-center justify-center text-primary-foreground">
@@ -869,7 +894,7 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
                 }}
                 overscan={APP_CONFIG.VIRTUALIZATION_OVERSCAN}
                 itemContent={(index, msg) => (
-                  <div className="px-4 py-2">
+                  <div className="px-2 sm:px-4 py-2">
                     <MessageItem
                       key={msg.id}
                       msg={msg}
@@ -950,7 +975,7 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
           </Dialog>
 
           {/* Input Area */}
-          <div className="p-4 border-t bg-white dark:bg-zinc-950 relative z-20">
+          <div className="p-2 sm:p-4 border-t bg-white dark:bg-zinc-950 relative z-20">
             {/* Typing Indicator */}
             {typingUsers.size > 0 && (
                 <div className="absolute bottom-[100%] left-4 mb-2 text-xs font-bold animate-pulse text-primary bg-background/95 backdrop-blur-sm px-3 py-1.5 rounded-full pointer-events-none z-[60] border shadow-md flex items-center gap-2">
@@ -1020,7 +1045,7 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
             
             <form 
               onSubmit={handleSendMessage} 
-              className="flex gap-2 items-end relative"
+              className="flex gap-1 sm:gap-2 items-end relative"
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1065,21 +1090,23 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
                  type="button" 
                  variant="outline" 
                  size="icon" 
+                 className="h-10 w-10 touch-manipulation"
                  onClick={() => fileInputRef.current?.click()}
                >
-                   <Paperclip className="h-4 w-4" />
+                   <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
                </Button>
 
                <Popover>
                   <PopoverTrigger asChild>
-                      <Button type="button" variant="outline" size="icon">
-                          <Smile className="h-4 w-4" />
+                      <Button type="button" variant="outline" size="icon" className="h-10 w-10 touch-manipulation">
+                          <Smile className="h-4 w-4 sm:h-5 sm:w-5" />
                       </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-full p-0 border-none" side="top">
+                  <PopoverContent className="w-full p-0 border-none" side="top" align="end">
                       <EmojiPicker 
                         theme={theme === "dark" ? Theme.DARK : Theme.LIGHT}
-                        onEmojiClick={handleEmojiClick} 
+                        onEmojiClick={handleEmojiClick}
+                        width="100%"
                       />
                   </PopoverContent>
                </Popover>
@@ -1089,11 +1116,11 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
                 placeholder={`Message ${activeChat.name}...`}
                 value={inputValue}
                 onChange={handleInputChange}
-                className="flex-1"
+                className="flex-1 min-h-[40px] text-base sm:text-sm"
               />
               
               {showMentions && activeChat.type === "channel" && (
-                  <div className="absolute bottom-16 left-4 bg-popover border rounded-md shadow-md w-64 z-50 max-h-40 overflow-y-auto p-1">
+                  <div className="absolute bottom-16 left-2 sm:left-4 bg-popover border rounded-md shadow-md w-[calc(100%-1rem)] sm:w-64 z-50 max-h-40 overflow-y-auto p-1">
                       {/* Special mentions */}
                       {(!mentionQuery || "everyone".startsWith(mentionQuery.toLowerCase())) && (
                           <div 
@@ -1151,15 +1178,15 @@ export function ChatArea({ activeChat, users, channels, connectedVoiceChannelId,
                   </div>
               )}
               {showMentions && activeChat.type === "dm" && (
-                  <div className="absolute bottom-16 left-4 bg-popover border rounded-md shadow-md w-64 z-50 max-h-40 overflow-y-auto p-1">
+                  <div className="absolute bottom-16 left-2 sm:left-4 bg-popover border rounded-md shadow-md w-[calc(100%-1rem)] sm:w-64 z-50 max-h-40 overflow-y-auto p-1">
                       <div className="p-2 text-sm text-muted-foreground text-center">
                           Les mentions ne sont pas disponibles en DM
                       </div>
                   </div>
               )}
 
-              <Button type="submit" size="icon">
-                <Send className="h-4 w-4" />
+              <Button type="submit" size="icon" className="h-10 w-10 touch-manipulation">
+                <Send className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
             </form>
           </div>

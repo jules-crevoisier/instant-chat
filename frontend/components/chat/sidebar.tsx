@@ -62,7 +62,7 @@ export function Sidebar({ channels, users, activeChat, onSelectChat, onOpenSearc
   );
 
   return (
-    <div className="flex w-64 flex-col border-r bg-gray-50/50 dark:bg-zinc-900/50">
+    <div className="flex w-full md:w-64 flex-col border-r bg-gray-50/50 dark:bg-zinc-900/50 h-full">
       <div className="p-4 font-bold text-xl flex items-center gap-2 text-primary">
         <span>Instant Chat</span>
       </div>
@@ -241,7 +241,7 @@ export function Sidebar({ channels, users, activeChat, onSelectChat, onOpenSearc
           <div className="flex items-center gap-1">
             <NotificationCenter />
             <ProfileSettings />
-            <Button variant="ghost" size="icon" onClick={logout}>
+            <Button variant="ghost" size="icon" className="touch-manipulation" onClick={logout}>
               <LogOut className="h-4 w-4" />
             </Button>
           </div>

@@ -100,7 +100,7 @@ export function AuthScreen() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4 dark:bg-zinc-950 relative">
+    <div className="flex min-h-screen items-center justify-center bg-gray-100 p-2 sm:p-4 dark:bg-zinc-950 relative">
       {/* Server Configuration Button */}
       <Button
         variant="ghost"

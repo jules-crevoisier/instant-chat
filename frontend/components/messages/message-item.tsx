@@ -103,11 +103,11 @@ export const MessageItem = memo(function MessageItem({
   return (
     <div
       id={`message-${msg.id}`}
-      className="group flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-zinc-900/50 p-2 -mx-2 rounded-lg transition-colors relative"
+      className="group flex items-start gap-2 sm:gap-3 hover:bg-gray-50 dark:hover:bg-zinc-900/50 p-2 sm:p-2 -mx-2 rounded-lg transition-colors relative"
     >
       <HoverCard>
         <HoverCardTrigger asChild>
-          <Avatar className="h-10 w-10 mt-0.5 cursor-pointer hover:opacity-80 transition-opacity">
+          <Avatar className="h-8 w-8 sm:h-10 sm:w-10 mt-0.5 cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0">
             <AvatarImage src={msg.avatar} />
             <AvatarFallback style={{ backgroundColor: msg.avatar_color }}>
               {msg.username[0].toUpperCase()}

@@ -11,6 +11,9 @@ import { ConnectionStatus } from "@/components/connection-status";
 import { socket } from "@/lib/socket";
 import { useAuth } from "@/context/auth-context";
 import { useNotifications } from "@/context/notification-context";
+import { Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
 export type ChatType = "channel" | "dm";
 
@@ -30,6 +33,8 @@ export function ChatLayout() {
   const [connectedVoiceChannelId, setConnectedVoiceChannelId] = useState<number | null>(null);
   const [showVoiceChat, setShowVoiceChat] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [membersSidebarOpen, setMembersSidebarOpen] = useState(false);
 
   // Update notification context when active chat changes
   useEffect(() => {
@@ -134,16 +139,42 @@ export function ChatLayout() {
 
   if (isLoading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
 
+  const handleSelectChat = (chat: ActiveChat) => {
+    setActiveChat(chat);
+    setSidebarOpen(false); // Close sidebar on mobile when selecting a chat
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar 
-        channels={channels} 
-        users={users} 
-        activeChat={activeChat} 
-        onSelectChat={setActiveChat}
-        onOpenSearch={() => setSearchOpen(true)}
-      />
-      <main className="flex-1 flex overflow-hidden">
+      {/* Desktop Sidebar - always visible */}
+      <div className="hidden md:block">
+        <Sidebar 
+          channels={channels} 
+          users={users} 
+          activeChat={activeChat} 
+          onSelectChat={handleSelectChat}
+          onOpenSearch={() => setSearchOpen(true)}
+        />
+      </div>
+
+      {/* Mobile Sidebar - Sheet/Drawer */}
+      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <SheetContent side="left" className="w-[280px] p-0">
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <Sidebar 
+            channels={channels} 
+            users={users} 
+            activeChat={activeChat} 
+            onSelectChat={handleSelectChat}
+            onOpenSearch={() => {
+              setSearchOpen(true);
+              setSidebarOpen(false);
+            }}
+          />
+        </SheetContent>
+      </Sheet>
+
+      <main className="flex-1 flex overflow-hidden relative">
         {/* Persistent Voice Area - stays mounted to maintain connection */}
         {connectedVoiceChannelId && user && (
           <div className={activeChat?.type === "channel" && activeChat?.id === connectedVoiceChannelId ? "flex-1 flex flex-col min-w-0" : "hidden"}>
@@ -173,13 +204,42 @@ export function ChatLayout() {
                  showVoiceChat={showVoiceChat}
                  setShowVoiceChat={setShowVoiceChat}
                  onJumpToMessage={handleJumpToMessage}
+                 onOpenMembersSidebar={() => setMembersSidebarOpen(true)}
+                 onOpenSidebar={() => setSidebarOpen(true)}
                />
             </div>
-            {activeChat.type === "channel" && <MembersSidebar users={users} />}
+            {/* Desktop Members Sidebar */}
+            {activeChat.type === "channel" && (
+              <div className="hidden lg:block">
+                <MembersSidebar users={users} />
+              </div>
+            )}
+            {/* Mobile Members Sidebar - Sheet */}
+            {activeChat.type === "channel" && (
+              <Sheet open={membersSidebarOpen} onOpenChange={setMembersSidebarOpen}>
+                <SheetContent side="right" className="w-[280px] p-0">
+                  <SheetTitle className="sr-only">Members</SheetTitle>
+                  <MembersSidebar users={users} />
+                </SheetContent>
+              </Sheet>
+            )}
           </>
         ) : !activeChat ? (
-          <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-            Select a channel or user to start chatting
+          <div className="flex h-full w-full items-center justify-center text-muted-foreground px-4 text-center relative">
+            {/* Mobile Menu Button - visible when no chat selected */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden absolute top-4 left-4 touch-manipulation h-10 w-10 bg-background/95 backdrop-blur-sm border border-border/50 shadow-sm"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <div>
+              <p className="text-sm sm:text-base">Select a channel or user to start chatting</p>
+              <p className="text-xs text-muted-foreground mt-2 md:hidden">Tap the menu button to browse channels</p>
+            </div>
           </div>
         ) : null}
       </main>
